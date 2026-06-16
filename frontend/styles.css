@@ -353,19 +353,26 @@
 
         .btn-outline {
             padding: 10px 16px;
-            background: transparent;
-            border: 1px solid var(--border-color);
+            background: rgba(100, 116, 139, 0.05);
+            border: 1px solid rgba(100, 116, 139, 0.3);
             color: var(--text-main);
             border-radius: 8px;
             cursor: pointer;
             font-weight: 500;
             transition: var(--transition);
             white-space: nowrap;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        [data-theme="dark"] .btn-outline {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .btn-outline:hover {
             border-color: var(--accent);
             color: var(--accent);
+            background: rgba(16, 185, 129, 0.05);
         }
 
         .btn-primary {
