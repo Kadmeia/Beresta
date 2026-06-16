@@ -211,7 +211,7 @@ class Api:
                     page_num = p['page_num']
                     text = p['text'][:1500]
                     
-                    if mode == "rename" or is_docx:
+                    if mode == "rename":
                         is_new = False
                     else:
                         is_new = is_new_document_start(text)
@@ -329,9 +329,11 @@ class Api:
                 self.send_status(f"Сохранение: {new_name}...")
                 
                 if original_path.lower().endswith('.docx'):
-                    # Save docx without splitting
-                    final_path = self.docx_processor.copy_and_save(
+                    # Save docx
+                    final_path = self.docx_processor.split_and_save(
                         original_path, 
+                        start_page,
+                        end_page,
                         new_name, 
                         current_output_dir
                     )

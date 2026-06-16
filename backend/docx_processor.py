@@ -1,10 +1,81 @@
 import os
-import shutil
 import docx
+from docx.document import Document as _Document
+from docx.oxml.text.paragraph import CT_P
+from docx.oxml.table import CT_Tbl
+from docx.table import _Cell, Table
+from docx.text.paragraph import Paragraph
+
+def iter_block_items(parent):
+    """
+    Generate a reference to each paragraph and table child within *parent*,
+    in document order. Each returned value is an instance of either Table or
+    Paragraph.
+    """
+    if isinstance(parent, _Document):
+        parent_elm = parent.element.body
+    elif isinstance(parent, _Cell):
+        parent_elm = parent._tc
+    else:
+        raise ValueError("something's not right")
+    for child in parent_elm.iterchildren():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, parent)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, parent)
 
 class DocxProcessor:
     def __init__(self):
         pass
+
+    def _get_virtual_pages(self, doc):
+        """
+        Splits docx into virtual pages based on length (~1500 chars) or explicit page breaks.
+        Returns (pages, blocks_list)
+        pages = [{"text": str, "start_idx": int, "end_idx": int}]
+        """
+        pages = []
+        current_page_text = []
+        current_start = 0
+        
+        blocks = list(iter_block_items(doc))
+        
+        for i, block in enumerate(blocks):
+            text = ""
+            is_page_break = False
+            
+            if isinstance(block, Paragraph):
+                text = block.text.strip()
+                if 'w:br w:type="page"' in block._element.xml:
+                    is_page_break = True
+            elif isinstance(block, Table):
+                for row in block.rows:
+                    row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                    if row_text:
+                        text += " ".join(row_text) + "\n"
+                text = text.strip()
+                
+            if text:
+                current_page_text.append(text)
+                
+            current_len = len("\n".join(current_page_text))
+            if current_len > 1500 or is_page_break:
+                pages.append({
+                    "text": "\n".join(current_page_text),
+                    "start_idx": current_start,
+                    "end_idx": i
+                })
+                current_page_text = []
+                current_start = i + 1
+                
+        if current_page_text or current_start < len(blocks):
+            pages.append({
+                "text": "\n".join(current_page_text),
+                "start_idx": current_start,
+                "end_idx": len(blocks) - 1
+            })
+            
+        return pages, blocks
 
     def extract_text(self, file_path, status_callback=None):
         if status_callback:
@@ -12,35 +83,39 @@ class DocxProcessor:
             
         try:
             doc = docx.Document(file_path)
-            full_text = []
+            pages, _ = self._get_virtual_pages(doc)
             
-            # Extract paragraphs
-            for para in doc.paragraphs:
-                if para.text.strip():
-                    full_text.append(para.text.strip())
-                    
-            # Extract tables
-            for table in doc.tables:
-                for row in table.rows:
-                    row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-                    if row_text:
-                        full_text.append(" ".join(row_text))
-                        
-            text = "\n".join(full_text)
-            
-            # Docx documents are always treated as a single page/document
-            if len(text.strip()) > 10:
-                return [{"page_num": 1, "text": text}]
-            else:
-                return []
+            result = []
+            for i, page in enumerate(pages):
+                result.append({
+                    "page_num": i + 1,
+                    "text": page['text']
+                })
+            return result
         except Exception as e:
             print(f"Error reading docx: {e}")
             raise ValueError(f"Не удалось прочитать файл {os.path.basename(file_path)}: {str(e)}")
 
-    def copy_and_save(self, original_path, new_name, output_dir):
+    def split_and_save(self, original_path, start_page, end_page, new_name, output_dir):
         """
-        Copies the original docx file to the output directory with a new name.
+        Intelligently splits the docx by removing XML nodes that are outside the requested page range.
+        This preserves all styles, headers, and tables perfectly.
         """
+        doc = docx.Document(original_path)
+        pages, blocks = self._get_virtual_pages(doc)
+        
+        start_idx = pages[start_page - 1]['start_idx']
+        end_idx = pages[end_page - 1]['end_idx']
+        
+        body = doc.element.body
+        # Iterate backwards to safely delete elements
+        for i in range(len(blocks) - 1, -1, -1):
+            if not (start_idx <= i <= end_idx):
+                try:
+                    body.remove(blocks[i]._element)
+                except Exception as e:
+                    print(f"Warning: could not remove block {i}: {e}")
+                    
         base_path = os.path.join(output_dir, new_name + ".docx")
         final_path = base_path
         
@@ -49,6 +124,5 @@ class DocxProcessor:
             final_path = os.path.join(output_dir, f"{new_name} ({counter}).docx")
             counter += 1
             
-        shutil.copy2(original_path, final_path)
-            
+        doc.save(final_path)
         return final_path
