@@ -13,6 +13,19 @@ class Api:
         self.docx_processor = DocxProcessor()
         self.llm_handler = None
         self.window = None
+        self.is_processing = False
+
+
+    def _lock(func):
+        def wrapper(self, *args, **kwargs):
+            if self.is_processing:
+                return {"error": "Система уже обрабатывает другой запрос. Дождитесь завершения."} if func.__name__ == "process_files" else [] if func.__name__ == "save_documents" else False
+            self.is_processing = True
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                self.is_processing = False
+        return wrapper
 
     def set_window(self, window):
         self.window = window
@@ -92,6 +105,7 @@ class Api:
             return True
         return False
         
+    @_lock
     def delete_model(self, model_type):
         import os
         try:
@@ -144,6 +158,7 @@ class Api:
             return True
         return False
 
+    @_lock
     def download_model(self, model_type="fast"):
         """Starts model download"""
         def progress_callback(msg):
@@ -152,6 +167,7 @@ class Api:
         self.model_manager.download_model(model_type, progress_callback)
         return "Started"
 
+    @_lock
     def process_files(self, file_paths, mode="split"):
         """
         Main pipeline for processing PDFs.
@@ -298,6 +314,7 @@ class Api:
         self.send_status("Ожидание проверки...")
         return results
 
+    @_lock
     def save_documents(self, preview_data, output_dir):
         """
         Takes the edited preview data from frontend and splits/saves PDFs or DOCXs.

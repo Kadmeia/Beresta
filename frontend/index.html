@@ -541,6 +541,7 @@
 
         // --- PYWEBVIEW INTEGRATION ---
 
+        let isProcessing = false;
         let selectedFiles = [];
         let previewData = [];
 
@@ -745,6 +746,10 @@
         dropZone.addEventListener('drop', handleDrop, false);
 
         async function handleDrop(e) {
+            if (isProcessing) {
+                showErrorModal("Дождитесь завершения текущей операции!");
+                return;
+            }
             const dt = e.dataTransfer;
             const files = dt.files;
             if (!files || files.length === 0) return;
@@ -808,6 +813,11 @@
         }
 
         async function startProcessing() {
+            if (isProcessing) {
+                showErrorModal("Система уже обрабатывает файлы!");
+                return;
+            }
+            isProcessing = true;
             if (selectedFiles.length === 0) {
                 alert("Сначала выберите грамоты (PDF)!");
                 return;
@@ -1084,6 +1094,11 @@
         });
 
         async function saveDocuments() {
+            if (isProcessing) {
+                showErrorModal("Дождитесь завершения текущей операции!");
+                return;
+            }
+            isProcessing = true;
             document.getElementById('preview-container').style.display = 'none';
             document.getElementById('progress-container').style.display = 'block';
             window.updateStatus("Сохраняем грамоты...");
