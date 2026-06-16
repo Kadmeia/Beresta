@@ -1,0 +1,2151 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Береста.ИИ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            /* Светлая тема (Береста и Хвоя) */
+            --bg-color: #fcfaf6;
+            /* Неотбеленный лен / береста */
+            --container-bg: #ffffff;
+            --text-main: #1c1917;
+            /* Цвет чернил */
+            --text-muted: #78716c;
+            --accent: #2d6a4f;
+            /* Хвойный зеленый */
+            --accent-hover: #1b4332;
+            --border-color: #e7e5e4;
+            --drop-bg: #f5f5f4;
+            --drop-border: #d6d3d1;
+            --toggle-bg: #e7e5e4;
+            --theme-switch-bg: #f5f5f4;
+            --theme-switch-active: #ffffff;
+            --input-bg: #fafaf9;
+            --shadow: 0 10px 30px -5px rgba(45, 106, 79, 0.08);
+            --transition: all 0.3s ease;
+        }
+
+        [data-theme="dark"] {
+            /* Темная тема (Приглушенный светло-оливковый) */
+            --bg-color: #2a2d24;
+            /* Приглушенный оливковый фон */
+            --container-bg: #33382d;
+            --text-main: #ffffff;
+            /* Более яркий белый для текста */
+            --text-muted: #e7e5e4;
+            /* Более светлый серый для неактивных элементов */
+            --accent: #f59e0b;
+            /* Янтарный / свет лучины */
+            --accent-hover: #d97706;
+            --border-color: #4d5445;
+            --drop-bg: #2e3329;
+            --drop-border: #4d5445;
+            --toggle-bg: #4d5445;
+            --theme-switch-bg: #2a2d24;
+            --theme-switch-active: #4d5445;
+            --input-bg: #2a2d24;
+            --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .app-container {
+            background-color: var(--container-bg);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        /* Header */
+        header {
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        header h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+        }
+
+        .logo-area {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        header h1 span {
+            color: var(--accent);
+        }
+
+        .theme-segmented-control {
+            display: flex;
+            background-color: var(--theme-switch-bg);
+            border-radius: 20px;
+            padding: 4px;
+            gap: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .theme-btn {
+            background: transparent;
+            border: none;
+            border-radius: 16px;
+            padding: 6px 14px;
+            cursor: pointer;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .theme-btn.active {
+            background-color: var(--theme-switch-active);
+            color: var(--text-main);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .theme-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        main {
+            padding: 16px 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        /* Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            background: var(--theme-switch-bg);
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            font-size: 1.05rem;
+            /* Увеличил размер букв */
+            color: var(--text-muted);
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .mode-btn:not(.active):hover {
+            background: rgba(120, 113, 108, 0.1);
+        }
+
+        .mode-btn.active {
+            background: var(--accent);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        [data-theme="dark"] .mode-btn.active {
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+            border: 1px solid var(--accent);
+        }
+
+        /* Drag & Drop Zone */
+        .drop-zone {
+            border: 2px dashed var(--drop-border);
+            border-radius: 16px;
+            padding: 16px 20px;
+            text-align: center;
+            background-color: var(--drop-bg);
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: var(--accent);
+            background-color: transparent;
+        }
+
+        .drop-icon-wrapper {
+            color: var(--accent);
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 4px;
+        }
+
+        .drop-icon-wrapper svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .drop-zone p {
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 1rem;
+        }
+
+        .drop-zone span {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .file-list {
+            margin-top: 6px;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            text-align: left;
+            width: 100%;
+            max-height: 60px;
+            overflow-y: auto;
+        }
+
+        /* Settings */
+        .settings-panel {
+            margin-bottom: 12px;
+        }
+
+        .settings-panel h3 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .toggle-label input {
+            display: none;
+        }
+
+        .toggle-slider {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background-color: var(--toggle-bg);
+            border-radius: 24px;
+            transition: 0.3s;
+            flex-shrink: 0;
+        }
+
+        .toggle-slider::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.3s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        }
+
+        .toggle-label input:checked+.toggle-slider {
+            background-color: var(--accent);
+        }
+
+        .toggle-label input:checked+.toggle-slider::after {
+            transform: translateX(20px);
+        }
+
+        /* Удалены неиспользуемые стили для radio-кнопок */
+
+        .input-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .input-box {
+            flex: 1;
+        }
+
+        .input-box span {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .text-input {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--input-bg);
+            color: var(--text-main);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .text-input:focus {
+            border-color: var(--accent);
+        }
+
+        .output-folder {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-outline {
+            padding: 10px 16px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+
+        .btn-outline:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-top: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        [data-theme="dark"] .btn-primary {
+            color: #16201c;
+        }
+
+        /* Темный текст на желтой кнопке */
+
+        /* Progress Bar (Березовая веточка) */
+        .progress-container {
+            display: none;
+            /* Скрыто по умолчанию */
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .progress-text {
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 12px;
+            color: var(--accent);
+        }
+
+        .branch-track {
+            width: 100%;
+            height: 4px;
+            background-color: var(--border-color);
+            border-radius: 4px;
+            position: relative;
+            overflow: visible;
+        }
+
+        .branch-fill {
+            height: 100%;
+            width: 0%;
+            background-color: var(--accent);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+
+        /* Листочек на конце веточки */
+        .branch-leaf {
+            position: absolute;
+            right: -10px;
+            top: -12px;
+            width: 24px;
+            height: 24px;
+            color: var(--accent);
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.3s ease;
+        }
+
+        .branch-fill.growing .branch-leaf {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Preview Layout Styles */
+        .preview-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: var(--bg-color);
+            z-index: 1000;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .preview-sidebar {
+            width: 25%;
+            min-width: 250px;
+            border-right: 1px solid var(--border-color);
+            background: var(--theme-switch-bg);
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .preview-sidebar h3 {
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .page-thumbnail-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 12px;
+        }
+
+        .thumbnail-card {
+            background: var(--container-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            aspect-ratio: 1 / 1.4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 8px;
+            text-align: center;
+        }
+
+        .thumbnail-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .thumbnail-card .page-num {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 2px 6px;
+            font-size: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .table-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--container-bg);
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+
+        .doc-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            table-layout: fixed;
+        }
+
+        .doc-table th {
+            padding: 12px 16px;
+            background: var(--theme-switch-bg);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-color);
+            text-transform: uppercase;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .doc-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+            position: relative;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            user-select: text;
+        }
+
+        .row-warning {
+            background-color: var(--drop-bg);
+        }
+
+        .row-success {
+            background-color: rgba(45, 106, 79, 0.05);
+        }
+
+        [data-theme="dark"] .row-success {
+            background-color: rgba(245, 158, 11, 0.05);
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--text-main);
+            background-color: var(--container-bg);
+            outline: none;
+            transition: all 0.15s ease;
+        }
+
+        .input-field:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(45, 106, 79, 0.1);
+        }
+
+        .input-filename-custom {
+            border-color: var(--accent) !important;
+            font-weight: 500;
+        }
+
+        .pages-badge {
+            display: inline-flex;
+            align-items: center;
+            background: var(--theme-switch-bg);
+            color: var(--text-main);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 2;
+            position: relative;
+        }
+
+        .btn-action {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 4px;
+            color: var(--text-muted);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            z-index: 2;
+            position: relative;
+        }
+
+        .btn-action:hover {
+            background: var(--theme-switch-bg);
+            color: var(--text-main);
+        }
+
+        .btn-action.btn-delete:hover {
+            background: #fee2e2;
+            color: #ef4444;
+        }
+
+        .actions-cell {
+            display: flex;
+            gap: 4px;
+        }
+
+        /* Merge Styles */
+        .row-merged {
+            background-color: var(--theme-switch-bg) !important;
+            opacity: 0.8;
+        }
+
+        .row-merged td.status-cell::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: -15px;
+            width: 2px;
+            height: 40px;
+            border-left: 2px dashed var(--accent);
+            z-index: 1;
+            transform: translateX(-50%);
+        }
+
+        .row-merged .hide-on-merge {
+            display: none !important;
+        }
+
+        .merged-message {
+            display: none;
+            color: var(--text-main);
+            font-size: 13px;
+            font-weight: 500;
+            background: rgba(45, 106, 79, 0.05);
+            border: 1px dashed var(--accent);
+            padding: 8px 12px;
+            border-radius: 6px;
+            align-items: center;
+            gap: 8px;
+        }
+
+        [data-theme="dark"] .merged-message {
+            background: rgba(245, 158, 11, 0.05);
+        }
+
+        .row-merged .merged-message {
+            display: flex;
+        }
+
+        .btn-unlink {
+            color: var(--accent) !important;
+            background: rgba(45, 106, 79, 0.1);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            position: relative;
+            z-index: 2;
+        }
+
+        .status-dot.warning {
+            background-color: #f59e0b;
+        }
+
+        .status-dot.success {
+            background-color: #10b981;
+        }
+
+        .status-dot.merged {
+            background-color: var(--accent);
+        }
+
+        .row-disabled {
+            opacity: 0.5;
+        }
+
+        .row-disabled td {
+            pointer-events: none;
+        }
+
+        .row-disabled td.status-cell,
+        .row-disabled td.actions-cell {
+            pointer-events: auto;
+            /* allow toggling back */
+        }
+
+        .doc-checkbox {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+            z-index: 2;
+            position: relative;
+        }
+
+        .footer-actions {
+            background: var(--theme-switch-bg);
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-container {
+            background: var(--container-bg);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            height: 80%;
+            max-height: 750px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow);
+            transform: scale(0.95);
+            transition: transform 0.25s ease;
+            overflow: hidden;
+        }
+
+        .modal-overlay.active .modal-container {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .btn-close-modal {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        .modal-body {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            background: var(--theme-switch-bg);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .scanned-document-mock {
+            background: white;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+            border-radius: 4px;
+            padding: 40px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #334155;
+        }
+
+        footer {
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            background-color: var(--theme-switch-bg);
+            border-top: 1px solid var(--border-color);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        footer a {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: var(--text-main);
+            transition: var(--transition);
+        }
+
+        .tg-icon {
+            color: #0ea5e9;
+            width: 18px;
+            height: 18px;
+        }
+
+        .heart-icon {
+            color: #ec4899;
+            width: 18px;
+            height: 18px;
+        }
+
+        footer a:hover {
+            opacity: 0.7;
+        }
+
+        /* Служебные классы для футера (Tailwind-like) */
+        .px-6 {
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+
+        .py-4 {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+
+        .border-t {
+            border-top-width: 1px;
+            border-top-style: solid;
+        }
+
+        .border-slate-100 {
+            border-color: #f1f5f9;
+        }
+
+        .bg-slate-50 {
+            background-color: #f8fafc;
+        }
+
+        .flex {
+            display: flex;
+        }
+
+        .items-center {
+            align-items: center;
+        }
+
+        .justify-between {
+            justify-content: space-between;
+        }
+
+        .text-sm {
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+        }
+
+        .gap-2 {
+            gap: 0.5rem;
+        }
+
+        .text-slate-500 {
+            color: #64748b;
+        }
+
+        .font-medium {
+            font-weight: 500;
+        }
+
+        .w-4 {
+            width: 1rem;
+        }
+
+        .h-4 {
+            height: 1rem;
+        }
+
+        .text-pink-500 {
+            color: #ec4899;
+        }
+
+        .transition-colors {
+            transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 150ms;
+        }
+
+        .hover\:text-\[\#0088cc\]:hover {
+            color: #0088cc;
+        }
+
+        .hover\:text-pink-600:hover {
+            color: #db2777;
+        }
+
+        [data-theme="dark"] .dark\:border-slate-800 {
+            border-color: #1e293b;
+        }
+
+        [data-theme="dark"] .dark\:bg-slate-900 {
+            background-color: #0f172a;
+        }
+
+        [data-theme="dark"] .dark\:text-slate-400 {
+            color: #94a3b8;
+        }
+
+        [data-theme="dark"] .dark\:hover\:text-\[\#33aadd\]:hover {
+            color: #33aadd;
+        }
+
+        [data-theme="dark"] .dark\:hover\:text-pink-400:hover {
+            color: #f472b6;
+        }
+
+        /* Animation classes for modal */
+        .hidden {
+            display: none !important;
+        }
+
+        .opacity-0 {
+            opacity: 0;
+        }
+
+        .scale-95 {
+            transform: scale(0.95);
+        }
+
+        .scale-100 {
+            transform: scale(1);
+        }
+
+        .transition-all {
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 200ms;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <header>
+            <div class="logo-area">
+                <h1>Береста<span>.ИИ</span></h1>
+                <span class="subtitle">от создателя DOCXдодыра</span>
+            </div>
+
+            <div class="header-actions" style="display: flex; gap: 12px; align-items: center;">
+                <button onclick="manageOcr()" title="Настройки распознавания текста"
+                    style="background: none; border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: var(--transition);"
+                    onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
+                    onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="width: 14px; height: 14px;">
+                        <path d="M4 7V4h16v3M9 20h6M12 4v16" />
+                    </svg> OCR-движок
+                </button>
+                <button onclick="manageModel()" title="Управление нейросетью"
+                    style="background: none; border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: var(--transition);"
+                    onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
+                    onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="width: 14px; height: 14px;">
+                        <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
+                        <rect x="9" y="9" width="6" height="6" />
+                        <line x1="9" y1="1" x2="9" y2="4" />
+                        <line x1="15" y1="1" x2="15" y2="4" />
+                        <line x1="9" y1="20" x2="9" y2="23" />
+                        <line x1="15" y1="20" x2="15" y2="23" />
+                        <line x1="20" y1="9" x2="23" y2="9" />
+                        <line x1="20" y1="14" x2="23" y2="14" />
+                        <line x1="1" y1="9" x2="4" y2="9" />
+                        <line x1="1" y1="14" x2="4" y2="14" />
+                    </svg> ИИ-модель
+                </button>
+                <div class="theme-segmented-control">
+                    <button class="theme-btn" data-theme-val="light" onclick="setTheme('light')" title="Светлая">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5" />
+                            <path
+                                d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                        </svg>
+                    </button>
+                    <button class="theme-btn" data-theme-val="dark" onclick="setTheme('dark')" title="Темная">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                        </svg>
+                    </button>
+                    <button class="theme-btn active" data-theme-val="system" onclick="setTheme('system')"
+                        title="Системная">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                            <line x1="8" y1="21" x2="16" y2="21" />
+                            <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="mode-toggle">
+                <button class="mode-btn active" onclick="setMode('split', this)">Разделить свиток</button>
+                <button class="mode-btn" onclick="setMode('rename', this)">Наречь грамоты</button>
+            </div>
+
+            <!-- Иконка: Свиток + Цифровые узлы -->
+            <div class="drop-zone" id="drop-zone" onclick="selectFiles()">
+                <div class="drop-icon-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <!-- Контур свитка -->
+                        <path
+                            d="M4 6V18C4 19.1046 4.89543 20 6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6Z" />
+                        <path d="M4 8H20" />
+                        <!-- Нейросетевые дорожки внутри -->
+                        <path d="M8 12H10L12 14H16" />
+                        <circle cx="8" cy="12" r="1" fill="currentColor" />
+                        <circle cx="16" cy="14" r="1" fill="currentColor" />
+                        <path d="M11 16H13" />
+                        <circle cx="11" cy="16" r="1" fill="currentColor" />
+                    </svg>
+                </div>
+                <p id="drop-text">Положите грамоты сюда или нажмите для выбора</p>
+                <span>Принимаем бересту формата: .pdf</span>
+                <div id="file-list" class="file-list"></div>
+                <button class="btn-outline" id="clear-files-btn"
+                    style="display: none; margin: 10px auto 0; padding: 4px 12px; font-size: 12px;"
+                    onclick="clearFiles(event)">Очистить список</button>
+            </div>
+
+            <div class="settings-panel">
+                <h3>Правила летописи (Именование)</h3>
+                <label class="toggle-label">
+                    <span>Добавить "Стороны" (ООО "Ромашка" - ИП Иванов А.И.)</span>
+                    <input type="checkbox" id="opt-parties" checked>
+                    <div class="toggle-slider"></div>
+                </label>
+                <label class="toggle-label">
+                    <span>Использовать полное имя (Акт ... №1 от 15.11.2025 г.)</span>
+                    <input type="checkbox" id="opt-full-name" checked onchange="toggleNameMode('full')">
+                    <div class="toggle-slider"></div>
+                </label>
+                <label class="toggle-label">
+                    <span>Использовать короткое имя (Акт, Договор, Приложение)</span>
+                    <input type="checkbox" id="opt-short-name" onchange="toggleNameMode('short')">
+                    <div class="toggle-slider"></div>
+                </label>
+                <label class="toggle-label">
+                    <span>Указать количество листов (- 2 л)</span>
+                    <input type="checkbox" id="opt-pages" checked>
+                    <div class="toggle-slider"></div>
+                </label>
+                <label class="toggle-label">
+                    <span>Добавить порядковый номер (1., 2., 3. ...)</span>
+                    <input type="checkbox" id="opt-numbering" onchange="triggerAllAutoNames()">
+                    <div class="toggle-slider"></div>
+                </label>
+
+                <div class="input-group">
+                    <div class="input-box">
+                        <span>Свой префикс</span>
+                        <input type="text" class="text-input" placeholder="Например: 2025_">
+                    </div>
+                    <div class="input-box">
+                        <span>Свой суффикс</span>
+                        <input type="text" class="text-input" placeholder="Например: _Архив">
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-panel">
+                <h3>Место хранения</h3>
+                <div class="output-folder">
+                    <input type="text" id="output-dir" class="text-input"
+                        placeholder="По умолчанию: папка исходной грамоты" readonly>
+                    <button class="btn-outline" onclick="selectOutput()">Выбрать архив</button>
+                </div>
+            </div>
+
+            <button class="btn-primary" id="action-btn" onclick="startProcessing()">Разобрать грамоты</button>
+
+            <!-- Анимация загрузки -->
+            <div class="progress-container" id="progress-container">
+                <div class="progress-text" id="progress-text">Расшифровка бересты...</div>
+                <div class="branch-track">
+                    <div class="branch-fill" id="branch-fill">
+                        <!-- SVG Листик -->
+                        <svg class="branch-leaf" viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                d="M17.75 3C14 3 10.75 5.5 9.5 9C6.5 9 4 11.5 4 14.5C4 16.66 5.28 18.5 7 19.33V22H9V19.92C9.32 19.97 9.66 20 10 20C13.75 20 17 17.5 18.25 14C21.25 14 23.75 11.5 23.75 8.5C23.75 5.5 21 3 17.75 3ZM10 18C8.07 18 6.5 16.43 6.5 14.5C6.5 12.86 7.64 11.45 9.17 11.08L10 10.9V18ZM18.25 12C17.92 12 17.58 11.97 17.25 11.92V14C17.25 15.93 15.68 17.5 13.75 17.5C13.75 13.36 17.11 10 21.25 10C21.25 11.1 20.35 12 18.25 12Z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Проверка результатов (Сплит-макет) -->
+            <div class="preview-container" id="preview-container">
+                <header class="preview-header"
+                    style="background:var(--bg-color); padding:14px 24px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                    <h2 style="font-size:18px; margin:0;">Проверка результатов</h2>
+                    <div class="file-info"
+                        style="display:flex; align-items:center; gap:12px; background:var(--drop-bg); padding:6px 14px; border-radius:6px; font-size:13px;">
+                        <span class="label" style="color:var(--text-muted);">Исходный файл:</span>
+                        <span class="filename" id="preview-filename"
+                            style="font-weight:600; color:var(--text-main);">...</span>
+                    </div>
+                </header>
+                <div class="main-layout" style="display:flex; flex:1; overflow:hidden;">
+                    <aside class="preview-sidebar">
+                        <h3>Превью страниц</h3>
+                        <div class="page-thumbnail-container" id="preview-thumbnails"></div>
+                    </aside>
+                    <main class="table-area">
+                        <table class="doc-table" id="preview-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"></th>
+                                    <th style="width: 60px;">Стр.</th>
+                                    <th colspan="4" style="padding: 0; border-bottom: 2px solid var(--border-color);">
+                                        <div style="display: flex; gap: 8px; padding: 12px 12px; width: 100%;">
+                                            <div style="flex: 1.2;">Стороны</div>
+                                            <div style="flex: 1.1;">Тип документа</div>
+                                            <div style="flex: 0.8;">Дата</div>
+                                            <div style="flex: 3.5;">Итоговое имя файла</div>
+                                        </div>
+                                    </th>
+                                    <th style="width: 80px; text-align: center;">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </main>
+                </div>
+                <footer class="footer-actions">
+                    <button class="btn-outline"
+                        style="background: transparent; color: var(--text-main); font-family: inherit; font-size: 1rem; border: 1px solid #cbd5e1; padding: 10px 20px;"
+                        onclick="resetTable()">Отмена</button>
+                    <button class="btn-primary"
+                        style="margin-top: 0; width: auto; font-family: inherit; font-size: 1rem; padding: 10px 20px;"
+                        onclick="saveDocuments()">Утвердить и сохранить</button>
+                </footer>
+
+                <!-- Модальное окно просмотра документа -->
+                <div class="modal-overlay" id="previewModal">
+                    <div class="modal-container">
+                        <div class="modal-header">
+                            <h4>Просмотр страницы <span id="previewPageNum">1</span></h4>
+                            <button class="btn-close-modal" onclick="closePreview()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="scanned-document-mock">
+                                <h3 style="text-align: center; margin-bottom: 20px; font-weight: bold;"
+                                    id="previewDocTitle">ДОКУМЕНТ</h3>
+                                <p style="margin-bottom: 15px;">г. Москва <span style="float: right;">"__" _______ 202_
+                                        г.</span></p>
+                                <p style="margin-bottom: 12px;"><b><span id="previewDocCompany">ООО
+                                            "Компания"</span></b>, именуемое в дальнейшем "Сторона 1"...</p>
+                                <div id="previewDocText"
+                                    style="white-space: pre-wrap; word-wrap: break-word; color: var(--text-muted); font-size: 11px; margin-top: 16px; border-top: 1px dashed var(--border-color); padding-top: 16px; display: none;">
+                                </div>
+                                <img id="previewDocImage" src=""
+                                    style="width: 100%; object-fit: contain; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 16px; display: none;" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <footer
+            class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between text-sm">
+            <a href="https://t.me/pro_servitude" target="_blank"
+                class="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-[#0088cc] dark:hover:text-[#33aadd] transition-colors font-medium"
+                style="text-decoration: none;">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.06-.2-.06-.05-.14-.03-.21-.02-.09.02-1.46.93-4.12 2.73-.39.27-.74.4-1.06.39-.35-.01-1.02-.2-1.52-.36-.61-.2-1.1-.31-1.07-.66.02-.18.27-.36.75-.55 2.94-1.28 4.91-2.13 5.89-2.54 2.8-1.18 3.38-1.38 3.76-1.39.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .34z" />
+                </svg>
+                Telegram-канал
+            </a>
+
+            <a href="#" onclick="showSupportModal('https://www.tinkoff.ru/rm/r_cNLDGIyQuz.TzrqnfAGGL/G4xqW19880')"
+                class="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 transition-colors font-medium"
+                style="text-decoration: none;">
+                <svg class="w-4 h-4 text-pink-500" fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                </svg>
+                Поддержать автора
+            </a>
+        </footer>
+    </div>
+
+    <!-- Модальное окно выбора нейросети -->
+    <div id="model-select-overlay" class="hidden opacity-0 transition-all duration-300" onclick="closeModelManager()"
+        style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;">
+        <div class="scale-95 transition-all duration-300" onclick="event.stopPropagation()"
+            style="background: var(--bg-color); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Управление ИИ-моделями</h3>
+                <button id="close-model-btn" onclick="closeModelManager()"
+                    style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); transition: color 0.2s;">✖</button>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Программе
+                необходимо скачать нейросеть для умного распознавания документов. Вы можете установить обе и
+                переключаться между ними.</p>
+
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div id="model-card-fast"
+                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
+                    <h4
+                        style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        QVikhr 4B <span
+                            style="font-size: 11px; background: var(--theme-switch-bg); padding: 2px 6px; border-radius: 4px; color: var(--text-muted);">~2.5
+                            ГБ</span></h4>
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Низкие
+                        требования к ПК (от 2.5 ГБ ОЗУ). Специально адаптирована под русский язык. Работает очень быстро
+                        и логично.</p>
+                    <div id="model-actions-fast"
+                        style="margin-top: 12px; display: flex; gap: 8px; align-items: center; min-height: 32px;"></div>
+                </div>
+
+                <div id="model-card-accurate"
+                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
+                    <h4
+                        style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        Saiga Qwen 4B <span
+                            style="font-size: 11px; background: var(--theme-switch-bg); padding: 2px 6px; border-radius: 4px; color: var(--text-muted);">~2.5
+                            ГБ</span></h4>
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Идеальное
+                        следование правилам и иерархии, высочайшее качество. <b>Требует от 2.5 ГБ ОЗУ</b>, отличный баланс скорости и ума.</p>
+                    <div id="model-actions-accurate"
+                        style="margin-top: 12px; display: flex; gap: 8px; align-items: center; min-height: 32px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно выбора OCR -->
+    <div id="ocr-select-overlay" class="hidden opacity-0 transition-all duration-300"
+        style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;">
+        <div class="scale-95 transition-all duration-300"
+            style="background: var(--bg-color); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Движок распознавания сканов (OCR)
+                </h3>
+                <button onclick="closeOcrManager()"
+                    style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); transition: color 0.2s;">✖</button>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Выберите
+                алгоритм для извлечения текста из картинок и PDF. Для чистых документов лучше подходит Tesseract, для
+                фото — EasyOCR.</p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <label
+                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: var(--transition);"
+                    id="ocr-label-tesseract" onclick="setOcrEngine('tesseract')">
+                    <input type="radio" name="ocr_engine" value="tesseract" checked
+                        style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                    <div>
+                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
+                            Tesseract (Быстрый)</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Идеален для чистых
+                            документов, актов, договоров. Работает моментально.</div>
+                    </div>
+                </label>
+                <label
+                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: var(--transition);"
+                    id="ocr-label-paddleocr" onclick="setOcrEngine('paddleocr')">
+                    <input type="radio" name="ocr_engine" value="paddleocr"
+                        style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                    <div>
+                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
+                            PaddleOCR (Нейросеть)</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Читает
+                            фото со смартфона, кривые сканы. Отличная скорость и точность.
+                        </div>
+                    </div>
+                </label>
+                <label
+                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: none; align-items: flex-start; gap: 12px; transition: var(--transition);"
+                    id="ocr-label-applevision" onclick="setOcrEngine('applevision')">
+                    <input type="radio" name="ocr_engine" value="applevision"
+                        style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                    <div>
+                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
+                            Apple Vision (Эксклюзив Mac)</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Встроенная нейросеть Apple. Работает моментально, идеально распознает любой текст и фото.
+                        </div>
+                    </div>
+                </label>
+            </div>
+
+            <button class="btn-primary" style="width: 100%; margin-top: 24px; padding: 12px; border-radius: 8px;"
+                onclick="closeOcrManager()">Готово</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно поддержки -->
+    <div id="support-overlay" class="hidden opacity-0 transition-all"
+        style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div id="support-modal" class="scale-95 transition-all"
+            style="background: var(--bg-color); padding: 32px; border-radius: 16px; text-align: center; max-width: 320px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+            <h3 style="margin-top: 0; margin-bottom: 16px; color: var(--text-main); font-size: 1.25rem;">Поддержать
+                автора</h3>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Отсканируйте QR-код для
+                быстрого перевода:</p>
+            <div id="qrcode-container" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
+            <a id="support-link" href="#" target="_blank" class="btn-primary"
+                style="display: block; margin-top: 24px; padding: 12px; text-decoration: none; border-radius: 8px;">Перейти
+                по ссылке</a>
+            <button class="btn-outline" style="width: 100%; margin-top: 12px; padding: 12px; border-radius: 8px;"
+                onclick="closeSupportModal()">Закрыть</button>
+        </div>
+    </div>
+
+    <script>
+        function setTheme(theme) {
+            document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.theme-btn[data-theme-val="${theme}"]`).classList.add('active');
+            if (theme === 'system') {
+                const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+            } else {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+            localStorage.setItem('beresta-theme', theme);
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            const activeTheme = document.querySelector('.theme-btn.active').getAttribute('data-theme-val');
+            if (activeTheme === 'system') document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+        });
+        const savedTheme = localStorage.getItem('beresta-theme') || 'system';
+        setTheme(savedTheme);
+
+        function toggleNameMode(mode) {
+            const fullOpt = document.getElementById('opt-full-name');
+            const shortOpt = document.getElementById('opt-short-name');
+            if (mode === 'full') {
+                if (fullOpt.checked) {
+                    shortOpt.checked = false;
+                }
+            } else if (mode === 'short') {
+                if (shortOpt.checked) {
+                    fullOpt.checked = false;
+                }
+            }
+            triggerAllAutoNames();
+        }
+
+        function setOcrEngine(engine) {
+            // Update UI styles
+            document.getElementById('ocr-label-tesseract').style.borderColor = engine === 'tesseract' ? 'var(--accent)' : 'var(--border-color)';
+            document.getElementById('ocr-label-tesseract').style.background = engine === 'tesseract' ? 'rgba(45, 106, 79, 0.05)' : 'transparent';
+
+            document.getElementById('ocr-label-easyocr').style.borderColor = engine === 'easyocr' ? 'var(--accent)' : 'var(--border-color)';
+            document.getElementById('ocr-label-easyocr').style.background = engine === 'easyocr' ? 'rgba(45, 106, 79, 0.05)' : 'transparent';
+
+            // Set dark mode highlights if needed
+            if (document.documentElement.getAttribute('data-theme') === 'dark') {
+                if (engine === 'tesseract') document.getElementById('ocr-label-tesseract').style.background = 'rgba(245, 158, 11, 0.05)';
+                if (engine === 'easyocr') document.getElementById('ocr-label-easyocr').style.background = 'rgba(245, 158, 11, 0.05)';
+            }
+
+            // Sync with backend
+            if (window.pywebview) {
+                pywebview.api.set_ocr_engine(engine);
+            }
+        }
+
+        window.addEventListener('pywebviewready', function () {
+            // Check if model exists
+            pywebview.api.check_model().then(exists => {
+                if (!exists) {
+                    manageModel(true);
+                }
+            });
+            // Show Apple Vision if Mac
+            pywebview.api.get_os_info().then(os => {
+                if (os === 'darwin') {
+                    document.getElementById('ocr-label-applevision').style.display = 'flex';
+                }
+            });
+            // Sync initial OCR engine state from backend
+            pywebview.api.get_ocr_engine().then(engine => {
+                if (engine) {
+                    let rdo = document.querySelector(`input[name="ocr_engine"][value="${engine}"]`);
+                    if (rdo) rdo.checked = true;
+                    setOcrEngine(engine);
+                }
+            });
+        });
+
+        function saveSettings() {
+            const settings = {
+                optParties: document.getElementById('opt-parties').checked,
+                optFullName: document.getElementById('opt-full-name').checked,
+                optShortName: document.getElementById('opt-short-name').checked,
+                optPages: document.getElementById('opt-pages').checked,
+                optNumbering: document.getElementById('opt-numbering').checked,
+                prefix: document.querySelectorAll('.text-input')[0].value,
+                suffix: document.querySelectorAll('.text-input')[1].value,
+                outputDir: document.getElementById('output-dir').value
+            };
+            localStorage.setItem('beresta-settings', JSON.stringify(settings));
+        }
+
+        function loadSettings() {
+            const saved = localStorage.getItem('beresta-settings');
+            if (saved) {
+                try {
+                    const settings = JSON.parse(saved);
+                    document.getElementById('opt-parties').checked = settings.optParties;
+                    document.getElementById('opt-full-name').checked = settings.optFullName;
+                    document.getElementById('opt-short-name').checked = settings.optShortName;
+                    document.getElementById('opt-pages').checked = settings.optPages;
+                    document.getElementById('opt-numbering').checked = settings.optNumbering;
+                    if (settings.prefix !== undefined) document.querySelectorAll('.text-input')[0].value = settings.prefix;
+                    if (settings.suffix !== undefined) document.querySelectorAll('.text-input')[1].value = settings.suffix;
+                    if (settings.outputDir !== undefined) document.getElementById('output-dir').value = settings.outputDir;
+                } catch (e) {
+                    console.error("Failed to load settings", e);
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            
+            const inputs = [
+                document.getElementById('opt-parties'),
+                document.getElementById('opt-full-name'),
+                document.getElementById('opt-short-name'),
+                document.getElementById('opt-pages'),
+                document.getElementById('opt-numbering'),
+                document.querySelectorAll('.text-input')[0],
+                document.querySelectorAll('.text-input')[1],
+                document.getElementById('output-dir')
+            ];
+            
+            inputs.forEach(input => {
+                if (input) {
+                    input.addEventListener('change', saveSettings);
+                    input.addEventListener('input', saveSettings);
+                }
+            });
+        });
+
+        function triggerAllAutoNames() {
+            if (typeof previewData !== 'undefined' && previewData.length > 0) {
+                for (let i = 0; i < previewData.length; i++) {
+                    triggerAutoName(i);
+                }
+            }
+        }
+
+        let currentAppMode = 'split';
+
+        function setMode(mode, btnElement) {
+            currentAppMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+            document.getElementById('action-btn').innerText = mode === 'split' ? "Разобрать грамоты" : "Наречь грамоты";
+        }
+
+        // --- PYWEBVIEW INTEGRATION ---
+
+        let selectedFiles = [];
+        let previewData = [];
+
+        window.updateStatus = function (msg) {
+            const progressText = document.getElementById('progress-text');
+            const progressContainer = document.getElementById('progress-container');
+            const branchFill = document.getElementById('branch-fill');
+
+            progressContainer.style.display = 'block';
+            progressText.innerText = msg;
+            branchFill.classList.add('growing');
+
+            if (msg.includes("готовы") || msg.includes("успешно")) {
+                branchFill.style.width = '100%';
+            } else if (msg.includes("%")) {
+                const match = msg.match(/(\d+)%/);
+                if (match) {
+                    branchFill.style.width = match[1] + '%';
+                }
+            } else if (parseInt(branchFill.style.width || "0") < 80) {
+                // simple simulated progress
+                let current = parseInt(branchFill.style.width || "0");
+                branchFill.style.width = (current + 10) + '%';
+            }
+        };
+
+        function manageModel(forceBlock = false) {
+            pywebview.api.get_models_status().then(status => {
+                let anyInstalled = false;
+
+                ['fast', 'accurate'].forEach(mType => {
+                    const card = document.getElementById(`model-card-${mType}`);
+                    const actionsDiv = document.getElementById(`model-actions-${mType}`);
+                    const st = status[mType];
+
+                    if (st.installed) anyInstalled = true;
+
+                    if (st.installed && st.active) {
+                        card.style.borderColor = 'var(--accent)';
+                        card.style.background = 'rgba(45, 106, 79, 0.05)';
+                        document.documentElement.getAttribute('data-theme') === 'dark' ?
+                            card.style.background = 'rgba(245, 158, 11, 0.05)' : null;
+
+                        actionsDiv.innerHTML = `<span style="color: var(--accent); font-weight: bold; font-size: 0.85rem; display:flex; align-items:center; gap:4px;"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Активная модель</span>`;
+                    } else if (st.installed && !st.active) {
+                        card.style.borderColor = 'var(--border-color)';
+                        card.style.background = 'var(--container-bg)';
+                        actionsDiv.innerHTML = `
+                            <button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px;" onclick="setActiveModel('${mType}')">Сделать активной</button>
+                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444; border-radius: 6px;" onclick="doDeleteModel('${mType}')">Удалить</button>
+                        `;
+                    } else {
+                        card.style.borderColor = 'var(--border-color)';
+                        card.style.background = 'var(--container-bg)';
+                        actionsDiv.innerHTML = `
+                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px;" onclick="startModelDownload('${mType}')">Скачать (~${mType === 'fast' ? '2.5' : '2.5'} ГБ)</button>
+                        `;
+                    }
+                });
+
+                const overlay = document.getElementById('model-select-overlay');
+                overlay.classList.remove('hidden');
+                overlay.style.display = 'flex';
+                setTimeout(() => {
+                    overlay.classList.remove('opacity-0');
+                    overlay.firstElementChild.classList.remove('scale-95');
+                    overlay.firstElementChild.classList.add('scale-100');
+                }, 10);
+            });
+        }
+
+        function closeModelManager() {
+            const overlay = document.getElementById('model-select-overlay');
+            overlay.classList.add('opacity-0');
+            overlay.firstElementChild.classList.add('scale-95');
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+            }, 300);
+        }
+
+        function manageOcr() {
+            const overlay = document.getElementById('ocr-select-overlay');
+            overlay.classList.remove('hidden');
+            overlay.style.display = 'flex';
+            setTimeout(() => {
+                overlay.classList.remove('opacity-0');
+                overlay.firstElementChild.classList.remove('scale-95');
+                overlay.firstElementChild.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeOcrManager() {
+            const overlay = document.getElementById('ocr-select-overlay');
+            overlay.classList.add('opacity-0');
+            overlay.firstElementChild.classList.add('scale-95');
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+            }, 300);
+        }
+
+        function setActiveModel(mType) {
+            pywebview.api.set_active_model(mType).then(success => {
+                if (success) manageModel();
+            });
+        }
+
+        function doDeleteModel(mType) {
+            if (confirm("Вы уверены, что хотите удалить эту модель с диска?")) {
+                pywebview.api.delete_model(mType).then(success => {
+                    manageModel();
+                });
+            }
+        }
+
+        function startModelDownload(modelType) {
+            closeModelManager();
+            document.getElementById('progress-container').style.display = 'block';
+            document.getElementById('action-btn').style.display = 'none';
+            document.getElementById('progress-text').innerText = "Подготовка к скачиванию...";
+
+            pywebview.api.download_model(modelType).then(() => {
+                document.getElementById('action-btn').style.display = 'block';
+                document.getElementById('progress-container').style.display = 'none';
+                manageModel(); // Show manager again to confirm success
+            });
+        }
+
+        function resetTable() {
+            document.getElementById('preview-container').style.display = 'none';
+            document.getElementById('preview-table').querySelector('tbody').innerHTML = '';
+            previewData = [];
+
+            // clear files visually and in state
+            selectedFiles = [];
+            document.getElementById('file-list').innerHTML = '';
+            document.getElementById('clear-files-btn').style.display = 'none';
+
+            if (window.pywebview) pywebview.api.resize_window(650, 920);
+        }
+
+        async function selectFiles() {
+            if (window.pywebview) {
+                const files = await pywebview.api.open_file_dialog();
+                if (files && files.length > 0) {
+                    addFilesToList(files);
+                }
+            }
+        }
+
+        function addFilesToList(newFiles) {
+            // Убираем дубликаты
+            const uniqueFiles = newFiles.filter(f => !selectedFiles.includes(f));
+            selectedFiles = selectedFiles.concat(uniqueFiles);
+            updateFileList(selectedFiles);
+        }
+
+        function clearFiles(e) {
+            e.stopPropagation(); // Чтобы не открывалось диалоговое окно
+            selectedFiles = [];
+            document.getElementById('file-list').innerHTML = '';
+            document.getElementById('drop-text').innerText = "Положите грамоты сюда или нажмите для выбора";
+            document.getElementById('clear-files-btn').style.display = 'none';
+        }
+
+        function updateFileList(paths) {
+            const fileListDiv = document.getElementById('file-list');
+            fileListDiv.innerHTML = '<strong>Выбранные грамоты:</strong><br>' + paths.map(f => f.split(/[\\/]/).pop()).join('<br>');
+            document.getElementById('drop-text').innerText = `Выбрано файлов: ${paths.length}`;
+            document.getElementById('clear-files-btn').style.display = paths.length > 0 ? 'block' : 'none';
+        }
+
+        // --- DRAG AND DROP ---
+        const dropZone = document.getElementById('drop-zone');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        async function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (!files || files.length === 0) return;
+
+            let paths = [];
+            let needBase64 = false;
+
+            for (let i = 0; i < files.length; i++) {
+                if (files[i].path) {
+                    paths.push(files[i].path);
+                } else {
+                    needBase64 = true;
+                }
+            }
+
+            if (!needBase64 && paths.length > 0) {
+                addFilesToList(paths);
+            } else {
+                // macOS WebKit обходной путь (передача через base64)
+                document.getElementById('progress-text').innerText = "Загрузка перетащенных файлов...";
+                document.getElementById('progress-container').style.display = 'block';
+
+                try {
+                    let tempPaths = [];
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        const base64 = await readFileAsBase64(file);
+                        const tempPath = await pywebview.api.save_dropped_file(file.name, base64);
+                        if (tempPath) tempPaths.push(tempPath);
+                    }
+                    addFilesToList(tempPaths);
+                } catch (err) {
+                    alert("Ошибка загрузки файлов: " + err);
+                } finally {
+                    document.getElementById('progress-container').style.display = 'none';
+                }
+            }
+        }
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result;
+                    const base64 = result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function selectOutput() {
+            if (window.pywebview) {
+                const folder = await pywebview.api.open_folder_dialog();
+                if (folder) {
+                    document.getElementById('output-dir').value = folder;
+                    saveSettings();
+                }
+            }
+        }
+
+        async function startProcessing() {
+            if (selectedFiles.length === 0) {
+                alert("Сначала выберите грамоты (PDF)!");
+                return;
+            }
+
+            const btn = document.getElementById('action-btn');
+            const progressContainer = document.getElementById('progress-container');
+            const branchFill = document.getElementById('branch-fill');
+            const progressText = document.getElementById('progress-text');
+            const previewContainer = document.getElementById('preview-container');
+
+            btn.style.display = 'none';
+            previewContainer.style.display = 'none';
+            progressContainer.style.display = 'block';
+            branchFill.style.width = '10%';
+            progressText.innerText = "Чтение свитков...";
+
+            try {
+                // Call python API
+                previewData = await pywebview.api.process_files(selectedFiles, currentAppMode);
+
+                if (previewData && previewData.length > 0 && !previewData.error) {
+                    renderPreviewTable(previewData);
+                    progressContainer.style.display = 'none';
+                    previewContainer.style.display = 'flex';
+                    if (window.pywebview) pywebview.api.resize_window(1200, 920);
+                } else if (previewData.error) {
+                    alert(previewData.error);
+                    btn.style.display = 'block';
+                    progressContainer.style.display = 'none';
+                }
+            } catch (error) {
+                alert("Ошибка обработки: " + error);
+                btn.style.display = 'block';
+                progressContainer.style.display = 'none';
+            }
+        }
+
+        function renderPreviewTable(data) {
+            const tbody = document.querySelector('#preview-table tbody');
+            const theadActions = document.querySelector('#preview-table thead th:nth-child(7)');
+            if (theadActions) {
+                theadActions.style.display = currentAppMode === 'rename' ? 'none' : '';
+            }
+            const thumbnailsContainer = document.getElementById('preview-thumbnails');
+            tbody.innerHTML = '';
+            thumbnailsContainer.innerHTML = '';
+
+            if (data.length > 0 && selectedFiles.length > 0) {
+                const filename = selectedFiles[0].split(/[\\/]/).pop();
+                document.getElementById('preview-filename').innerText = `${filename} (${data[data.length - 1].end_page} стр.)`;
+            }
+
+            data.forEach((item, index) => {
+                // Initialize default properties if not present
+                if (typeof item.isMerged === 'undefined') item.isMerged = false;
+                if (typeof item.isManualEdit === 'undefined') item.isManualEdit = false;
+                if (typeof item.isActive === 'undefined') item.isActive = true;
+
+                const addParties = document.getElementById('opt-parties').checked;
+                const addPages = document.getElementById('opt-pages').checked;
+                const isFullName = document.getElementById('opt-full-name').checked;
+                const prefix = document.querySelectorAll('.text-input')[0].value.trim();
+                const suffix = document.querySelectorAll('.text-input')[1].value.trim();
+
+                // Рендер миниатюры
+                const thumb = document.createElement('div');
+                thumb.className = 'thumbnail-card';
+                thumb.onclick = () => openPreview(item.start_page, item.parties, isFullName ? item.full_name : item.short_name, index);
+                thumb.innerHTML = `
+                    <span style="font-size: 11px; color: ${item.confidence ? 'var(--text-muted)' : '#f59e0b'}; font-weight: 600;">${(item.short_name || 'Неизвестно').substring(0, 15)}</span>
+                    <span style="font-size: 24px; margin: 8px 0; ${item.confidence ? '' : 'opacity: 0.5;'}">📄</span>
+                    <span class="page-num">${item.start_page}${item.end_page !== item.start_page ? '-' + item.end_page : ''}</span>
+                `;
+                thumbnailsContainer.appendChild(thumb);
+
+                // Формирование начального имени
+                if (!item.isManualEdit && !item.new_name) {
+                    item.new_name = generateAutoName(item, index);
+                }
+
+                // Рендер строки таблицы
+                const tr = document.createElement('tr');
+                tr.id = `row-${index}`;
+                tr.draggable = true;
+                tr.ondragstart = (e) => handleDragStart(e, index);
+                tr.ondragover = (e) => handleDragOver(e);
+                tr.ondrop = (e) => handleDrop(e, index);
+                tr.ondragenter = (e) => handleDragEnter(e);
+                tr.ondragleave = (e) => handleDragLeave(e);
+                const disabledClass = item.isActive ? '' : 'row-disabled';
+                tr.className = item.isMerged ? `row-merged ${disabledClass}` : (item.confidence ? `row-success ${disabledClass}` : `row-warning ${disabledClass}`);
+
+                tr.innerHTML = `
+                    <td class="status-cell" style="text-align: center;">
+                        ${item.isMerged ? `<span class="status-dot merged" id="status-dot-${index}"></span>` : `<input type="checkbox" class="doc-checkbox" ${item.isActive ? 'checked' : ''} onchange="toggleRowActive(${index})">`}
+                    </td>
+                    <td style="white-space: nowrap;">
+                        <span class="pages-badge">${item.start_page}${item.end_page !== item.start_page ? '–' + item.end_page : ''}</span>
+                        <button class="btn-action" onclick="openPreview(${item.start_page}, '${item.parties ? item.parties.replace(/'/g, "\\'") : ''}', '${isFullName ? item.full_name : item.short_name}', ${index})" title="Просмотр страницы">🔍</button>
+                    </td>
+                    <td colspan="4" class="merge-container-cell" style="padding: 0;">
+                        <div class="fields-wrapper hide-on-merge" style="display: flex; gap: 8px; padding: 10px 12px; width: 100%;">
+                            <div style="flex: 1.2;">
+                                <input type="text" class="input-field" value='${item.parties ? item.parties.replace(/'/g, "&#39;") : ""}' placeholder="Стороны..." onchange="updateData(${index}, 'parties', this.value); triggerAutoName(${index});">
+                            </div>
+                            <div style="flex: 1.1;">
+                                <select class="input-field js-select-type" onchange="updateData(${index}, 'base_name', this.value); triggerAutoName(${index});">
+                                    <option value="" ${!item.short_name ? 'selected' : ''}>⚠️ Неизвестный</option>
+                                    <option value="Договор" ${item.short_name === 'Договор' ? 'selected' : ''}>Договор</option>
+                                    <option value="Акт" ${item.short_name === 'Акт' ? 'selected' : ''}>Акт</option>
+                                    <option value="Приложение" ${item.short_name === 'Приложение' ? 'selected' : ''}>Приложение</option>
+                                    <option value="Счет" ${item.short_name === 'Счет' ? 'selected' : ''}>Счет</option>
+                                    <option value="${isFullName ? item.full_name : item.short_name}" selected>${isFullName ? item.full_name : item.short_name}</option>
+                                </select>
+                            </div>
+                            <div style="flex: 0.8;">
+                                <input type="text" class="input-field" value='${item.date}' placeholder="ДД.ММ.ГГГГ" onchange="updateData(${index}, 'date', this.value); triggerAutoName(${index});">
+                            </div>
+                            <div style="flex: 3.5;">
+                                <input type="text" class="input-field js-input-filename ${item.isManualEdit ? 'input-filename-custom' : ''}" value='${item.new_name.replace(/'/g, "&#39;")}' oninput="markManualEdit(${index}, this.value)">
+                            </div>
+                        </div>
+                        <div class="merged-message" style="margin: 10px 12px;">
+                            <span>🔗</span>
+                            <span><b>Присоединено к документу выше</b> (будет сохранено в единый файл)</span>
+                        </div>
+                    </td>
+                    <td class="actions-cell" style="justify-content: center; ${currentAppMode === 'rename' ? 'display: none;' : ''}">
+                        <button class="btn-action ${item.isMerged ? 'btn-unlink' : ''}" id="btn-merge-${index}" onclick="toggleMerge(${index})" title="${item.isMerged ? 'Разъединить документы' : 'Объединить с предыдущим'}" style="font-size: 15px;" ${index === 0 ? 'disabled style="opacity: 0.2; cursor: default;"' : ''}>${item.isMerged ? '🔓' : '🔗'}</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateData(index, field, value) {
+            if (field === 'base_name') {
+                const isFullName = document.getElementById('opt-full-name').checked;
+                if (isFullName) previewData[index].full_name = value;
+                else previewData[index].short_name = value;
+            } else {
+                previewData[index][field] = value;
+            }
+        }
+
+        function markManualEdit(index, value) {
+            previewData[index].isManualEdit = true;
+            previewData[index].new_name = value;
+            const input = document.querySelector(`#row-${index} .js-input-filename`);
+            if (input) input.classList.add('input-filename-custom');
+        }
+
+        function generateAutoName(item, index) {
+            const addParties = document.getElementById('opt-parties').checked;
+            const addPages = document.getElementById('opt-pages').checked;
+            const isFullName = document.getElementById('opt-full-name').checked;
+            const isShortName = document.getElementById('opt-short-name').checked;
+            const addNumbering = document.getElementById('opt-numbering').checked;
+            const prefix = document.querySelectorAll('.text-input')[0].value.trim();
+            const suffix = document.querySelectorAll('.text-input')[1].value.trim();
+
+            let baseName = '';
+            if (isFullName) {
+                baseName = item.full_name;
+            } else if (isShortName) {
+                baseName = item.short_name;
+            }
+
+            if (addParties && item.parties && item.parties !== "Ошибка") {
+                if (baseName) baseName = `${item.parties} - ${baseName}`;
+                else baseName = item.parties;
+            }
+
+            let newName = '';
+            if (addNumbering) {
+                newName += `${index + 1}. `;
+            }
+            newName += prefix + baseName;
+
+            if (item.date && (!baseName || !baseName.includes(item.date))) {
+                if (newName && !newName.endsWith(' ')) newName += ` `;
+                newName += item.date;
+            }
+            if (addPages) {
+                const pageCount = item.end_page - item.start_page + 1;
+                newName += ` - ${pageCount} л`;
+            }
+            newName += suffix;
+
+            // Cleanup
+            newName = newName.replace(/["]+/g, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+            if (!newName) newName = `Документ ${index + 1}`;
+
+            return newName + '.pdf';
+        }
+
+        function triggerAutoName(index) {
+            if (previewData[index].isManualEdit) return;
+
+            const item = previewData[index];
+            const newName = generateAutoName(item, index);
+
+            previewData[index].new_name = newName;
+
+            const input = document.querySelector(`#row-${index} .js-input-filename`);
+            if (input) input.value = newName;
+
+            const row = document.getElementById(`row-${index}`);
+            if (row && !item.isMerged) {
+                row.className = 'row-success';
+                const dot = document.getElementById(`status-dot-${index}`);
+                if (dot) dot.className = 'status-dot success';
+            }
+        }
+
+        function toggleMerge(index) {
+            if (index === 0) return; // Cannot merge first row with previous
+
+            const item = previewData[index];
+            item.isMerged = !item.isMerged;
+
+            // Re-render the whole table to reflect merged states easily
+            renderPreviewTable(previewData);
+        }
+
+        function toggleRowActive(index) {
+            previewData[index].isActive = !previewData[index].isActive;
+            renderPreviewTable(previewData);
+        }
+
+        // Modal Logic
+        function openPreview(pageNum, company, type, index) {
+            const item = previewData[index];
+            document.getElementById('previewPageNum').textContent = pageNum;
+            document.getElementById('previewDocTitle').textContent = type ? type.toUpperCase() : "ДОКУМЕНТ";
+            document.getElementById('previewDocCompany').textContent = company || "ООО «Компания»";
+
+            const textContainer = document.getElementById('previewDocText');
+            if (textContainer) {
+                if (item && item.text) {
+                    textContainer.innerText = item.text;
+                } else {
+                    textContainer.innerText = "Текст не найден.";
+                }
+            }
+
+            const imageContainer = document.getElementById('previewDocImage');
+            if (imageContainer) {
+                if (item && item.image_b64) {
+                    imageContainer.src = "data:image/jpeg;base64," + item.image_b64;
+                    imageContainer.style.display = 'block';
+                    if (textContainer) textContainer.style.display = 'none'; // Скрываем текст, если есть картинка
+                } else {
+                    imageContainer.style.display = 'none';
+                    if (textContainer) textContainer.style.display = 'block'; // Показываем текст как фоллбэк
+                }
+            }
+
+            const modal = document.getElementById('previewModal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('active'), 10);
+        }
+
+        function closePreview() {
+            const modal = document.getElementById('previewModal');
+            modal.classList.remove('active');
+            setTimeout(() => modal.style.display = 'none', 250);
+        }
+
+        document.getElementById('previewModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('previewModal')) closePreview();
+        });
+
+        async function saveDocuments() {
+            document.getElementById('preview-container').style.display = 'none';
+            document.getElementById('progress-container').style.display = 'block';
+            window.updateStatus("Сохраняем грамоты...");
+
+            try {
+                const outDirDiv = document.getElementById('output-dir').value;
+                const outDir = outDirDiv ? outDirDiv : (selectedFiles.length > 0 ? selectedFiles[0].substring(0, selectedFiles[0].lastIndexOf("\\") > -1 ? selectedFiles[0].lastIndexOf("\\") : selectedFiles[0].lastIndexOf("/")) : ".");
+
+                // Сводим объединенные документы
+                const dataToSave = [];
+                let currentDoc = null;
+
+                for (let i = 0; i < previewData.length; i++) {
+                    const item = previewData[i];
+                    if (!item.isActive && !item.isMerged) continue;
+
+                    if (!item.isMerged) {
+                        if (currentDoc) dataToSave.push(currentDoc);
+                        currentDoc = { ...item }; // Copy the item
+                    } else {
+                        if (currentDoc && item.isActive) {
+                            currentDoc.end_page = item.end_page; // Extend the end page of the parent document
+                        }
+                    }
+                }
+                if (currentDoc) dataToSave.push(currentDoc);
+
+                await pywebview.api.save_documents(dataToSave, outDir);
+
+                setTimeout(() => {
+                    document.getElementById('progress-container').style.display = 'none';
+                    document.getElementById('action-btn').style.display = 'flex';
+                    selectedFiles = [];
+                    document.getElementById('drop-text').innerText = "Положите грамоты сюда или нажмите для выбора";
+                    document.getElementById('file-list').innerHTML = "";
+                    if (window.pywebview) pywebview.api.resize_window(650, 920);
+                    alert("Сохранение успешно завершено!");
+                }, 1000);
+            } catch (e) {
+                alert("Ошибка сохранения: " + e);
+                document.getElementById('preview-container').style.display = 'flex';
+                document.getElementById('progress-container').style.display = 'none';
+            }
+        }
+
+        let qrcodeInstance = null;
+
+        function showSupportModal(link) {
+            const overlay = document.getElementById('support-overlay');
+            const modal = document.getElementById('support-modal');
+            const linkEl = document.getElementById('support-link');
+
+            // Подставляем ссылку на донат в кнопку "Перейти по ссылке"
+            linkEl.href = link;
+
+            // Генерируем QR-код
+            const qrContainer = document.getElementById('qrcode-container');
+            qrContainer.innerHTML = ''; // Очищаем от старого QR-кода
+
+            if (typeof QRCode !== 'undefined') {
+                qrcodeInstance = new QRCode(qrContainer, {
+                    text: link,
+                    width: 200,
+                    height: 200,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } else {
+                qrContainer.innerHTML = '<p class="text-sm text-slate-500">Библиотека QR-кодов не загружена</p>';
+            }
+
+            // Показываем окно с анимацией
+            overlay.classList.remove('hidden');
+            overlay.style.display = 'flex';
+            setTimeout(() => {
+                overlay.classList.remove('opacity-0');
+                modal.classList.remove('scale-95');
+                modal.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeSupportModal() {
+            const overlay = document.getElementById('support-overlay');
+            const modal = document.getElementById('support-modal');
+
+            // Скрываем окно с анимацией
+            overlay.classList.add('opacity-0');
+            modal.classList.remove('scale-100');
+            modal.classList.add('scale-95');
+
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+            }, 200); // 200мс — время анимации Tailwind
+        }
+    </script>
+</body>
+
+</html>

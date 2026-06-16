@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Береста.ИИ — Разделение документов</title>
+    <style>
+        :root {
+            --bg-primary: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --success: #10b981;
+            --success-light: #ecfdf5;
+            --warning: #f59e0b;
+            --warning-light: #fffbeb;
+            --danger: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background: var(--bg-card);
+            padding: 14px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-area h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #f1f5f9;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .file-info .label { color: var(--text-muted); }
+        .file-info .filename { font-weight: 600; color: #334155; }
+
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Левая панель */
+        .preview-sidebar {
+            width: 280px;
+            border-right: 1px solid var(--border-color);
+            background: #f1f5f9;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .preview-sidebar h3 {
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .page-thumbnail-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .thumbnail-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            aspect-ratio: 1 / 1.4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            padding: 8px;
+        }
+
+        .thumbnail-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        .thumbnail-card .page-num {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(15, 23, 42, 0.7);
+            color: white;
+            padding: 2px 6px;
+            font-size: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        /* Таблица */
+        .table-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-card);
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+
+        .table-area h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #0f172a;
+        }
+
+        .doc-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        .doc-table th {
+            padding: 12px 16px;
+            background: #f8fafc;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-color);
+            text-transform: uppercase;
+        }
+
+        .doc-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+            position: relative; /* Для позиционирования линии коннектора */
+        }
+
+        .row-warning { background-color: var(--warning-light); }
+        .row-success { background-color: var(--success-light); }
+
+        .input-field {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--text-main);
+            background-color: var(--bg-card);
+            outline: none;
+            transition: all 0.15s ease;
+        }
+
+        .input-field:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+        }
+
+        .pages-badge {
+            display: inline-flex;
+            align-items: center;
+            background: #e2e8f0;
+            color: #334155;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 2;
+            position: relative;
+        }
+
+        .btn-action {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 4px;
+            color: var(--text-muted);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            z-index: 2;
+            position: relative;
+        }
+
+        .btn-action:hover {
+            background: #e2e8f0;
+            color: var(--text-main);
+        }
+
+        .btn-action.btn-delete:hover {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .actions-cell { display: flex; gap: 4px; }
+
+        /* --- Стили для ОБЪЕДИНЕННОЙ строки --- */
+        .row-merged {
+            background-color: #f8fafc !important; /* Серый оттенок вложенности */
+        }
+
+        /* Вертикальная линия-коннектор связывающая строки */
+        .row-merged td.status-cell::before {
+            content: '';
+            position: absolute;
+            left: 20px; /* По центру иконки статуса */
+            top: -20px; /* Идет вверх к предыдущей строке */
+            width: 2px;
+            height: 52px;
+            border-left: 2px dashed var(--primary);
+            z-index: 1;
+        }
+
+        /* Скрытие полей ввода при объединении */
+        .row-merged .input-field,
+        .row-merged .js-select-type {
+            display: none;
+        }
+
+        /* Отображение инфо-сообщения */
+        .merged-message {
+            display: none;
+            color: var(--primary);
+            font-size: 13px;
+            font-weight: 500;
+            background: #eff6ff;
+            border: 1px dashed #bfdbfe;
+            padding: 8px 12px;
+            border-radius: 6px;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .row-merged .merged-message {
+            display: flex;
+        }
+
+        /* Визуальное «схлопывание» ячеек при слиянии */
+        .row-merged td.mergeable-cell {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        /* Кнопка "Разъединить" */
+        .btn-unlink {
+            color: var(--primary) !important;
+            background: #eff6ff;
+        }
+        .btn-unlink:hover {
+            background: #dbeafe;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            position: relative;
+            z-index: 2;
+        }
+        .status-dot.warning { background-color: var(--warning); }
+        .status-dot.success { background-color: var(--success); }
+        .status-dot.merged { background-color: var(--primary); }
+
+        /* Подвал */
+        .footer-actions {
+            background: var(--bg-card);
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.15s;
+        }
+
+        .btn-primary:hover { background: var(--primary-hover); }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-area">
+            <h1>Береста.ИИ</h1>
+        </div>
+        <div class="file-info">
+            <span class="label">Исходный файл:</span>
+            <span class="filename">Handwritten_2026-06-08_152924.pdf</span>
+            <span class="label">(34 стр.)</span>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        
+        <!-- Левая панель: Превью -->
+        <aside class="preview-sidebar">
+            <h3>Превью страниц</h3>
+            <div class="page-thumbnail-container">
+                <div class="thumbnail-card">
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Договор</span>
+                    <span style="font-size: 24px; margin: 8px 0;">📄</span>
+                    <span class="page-num">1</span>
+                </div>
+                <div class="thumbnail-card">
+                    <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Договор</span>
+                    <span style="font-size: 24px; margin: 8px 0;">📄</span>
+                    <span class="page-num">2</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Правая панель: Таблица -->
+        <main class="table-area">
+            <h2>Проверка и классификация документов</h2>
+            
+            <table class="doc-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"></th>
+                        <th style="width: 100px;">Страницы</th>
+                        <th style="width: 250px;">Стороны</th>
+                        <th style="width: 200px;">Тип документа</th>
+                        <th style="width: 140px;">Дата</th>
+                        <th>Итоговое имя файла</th>
+                        <th style="width: 120px; text-align: center;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Строка 1 (Родительский документ) -->
+                    <tr class="row-success" id="row-parent">
+                        <td class="status-cell" style="text-align: center;">
+                            <span class="status-dot success"></span>
+                        </td>
+                        <td>
+                            <span class="pages-badge">1–6</span>
+                        </td>
+                        <td><input type="text" class="input-field" value="ООО Альфа"></td>
+                        <td>
+                            <select class="input-field">
+                                <option selected>Договор № 1</option>
+                                <option>Доп. соглашение</option>
+                            </select>
+                        </td>
+                        <td><input type="text" class="input-field" value="01.01.2022"></td>
+                        <td>
+                            <input type="text" class="input-field" value="ООО_Альфа_Договор_№_1_01.01.2022.pdf">
+                        </td>
+                        <td class="actions-cell" style="justify-content: center;">
+                            <button class="btn-action btn-delete">🗑️</button>
+                        </td>
+                    </tr>
+
+                    <!-- Строка 2 (Связываемая строка) -->
+                    <tr class="row-warning" id="row-child">
+                        <td class="status-cell" style="text-align: center;">
+                            <span class="status-dot warning" id="child-status-dot"></span>
+                        </td>
+                        <td>
+                            <span class="pages-badge">7–8</span>
+                        </td>
+                        
+                        <!-- Эти три ячейки будут "прятаться", а вместо них покажется сообщение о слиянии -->
+                        <td colspan="4" class="merge-container-cell" style="padding: 0;">
+                            <!-- Поля ввода (видны по умолчанию) -->
+                            <div class="fields-wrapper" style="display: flex; gap: 8px; padding: 12px 16px; width: 100%;">
+                                <div style="flex: 1.5;">
+                                    <input type="text" class="input-field" placeholder="Укажите стороны...">
+                                </div>
+                                <div style="flex: 1.2;">
+                                    <select class="input-field">
+                                        <option value="" selected>⚠️ Неизвестный</option>
+                                        <option>Договор</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 0.8;">
+                                    <input type="text" class="input-field" placeholder="ДД.ММ.ГГГГ">
+                                </div>
+                                <div style="flex: 2;">
+                                    <input type="text" class="input-field" placeholder="Автоимя...">
+                                </div>
+                            </div>
+                            <!-- Сообщение о слиянии (скрыто по умолчанию) -->
+                            <div class="merged-message" style="margin: 12px 16px;">
+                                <span>🔗</span>
+                                <span><b>Присоединено к документу выше</b> (будет сохранено в единый файл: ООО_Альфа_Договор_№_1_01.01.2022.pdf)</span>
+                            </div>
+                        </td>
+
+                        <td class="actions-cell" style="justify-content: center;">
+                            <!-- Кнопка слияния с обработчиком клика -->
+                            <button class="btn-action" id="btn-merge" onclick="toggleMerge()" title="Объединить с предыдущим документом" style="font-size: 15px;">🔗</button>
+                            <button class="btn-action btn-delete">🗑️</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </main>
+    </div>
+
+    <footer class="footer-actions">
+        <button class="btn-primary">Применить и разделить</button>
+    </footer>
+
+    <!-- Логика переключения слияния -->
+    <script>
+        function toggleMerge() {
+            const childRow = document.getElementById('row-child');
+            const btnMerge = document.getElementById('btn-merge');
+            const childStatus = document.getElementById('child-status-dot');
+            const fieldsWrapper = childRow.querySelector('.fields-wrapper');
+
+            if (childRow.classList.contains('row-merged')) {
+                // РАЗЪЕДИНЕНИЕ
+                childRow.classList.remove('row-merged');
+                childRow.classList.add('row-warning');
+                
+                // Возвращаем иконку статуса
+                childStatus.className = 'status-dot warning';
+                
+                // Показываем поля ввода
+                fieldsWrapper.style.display = 'flex';
+                
+                // Меняем кнопку назад
+                btnMerge.textContent = '🔗';
+                btnMerge.classList.remove('btn-unlink');
+                btnMerge.title = "Объединить с предыдущим документом";
+            } else {
+                // ОБЪЕДИНЕНИЕ
+                childRow.classList.add('row-merged');
+                childRow.classList.remove('row-warning');
+                
+                // Меняем иконку статуса на синюю (связанную)
+                childStatus.className = 'status-dot merged';
+                
+                // Скрываем поля ввода
+                fieldsWrapper.style.display = 'none';
+                
+                // Меняем кнопку на "Разъединить"
+                btnMerge.textContent = '🔓';
+                btnMerge.classList.add('btn-unlink');
+                btnMerge.title = "Разъединить документы";
+            }
+        }
+    </script>
+</body>
+</html>

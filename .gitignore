@@ -1,0 +1,32 @@
+# Environments
+venv/
+env/
+.env
+
+# Models and Large Files
+*.gguf
+*.bin
+*.pt
+*.onnx
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# MacOS
+.DS_Store
+
+# Temporary / testing files
+*.pdf
+!test_data/*.pdf
+!frontend/assets/*.pdf
+!Handwritten_*.pdf
+*.log
