@@ -325,7 +325,7 @@
                     style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); transition: color 0.2s;">✖</button>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Выберите
-                алгоритм для извлечения текста из картинок и PDF. Вы можете использовать встроенную нейросеть Apple Vision (работает моментально) или скачать мощную модель PaddleOCR (для кривых сканов и фото).</p>
+                алгоритм для извлечения текста из картинок и PDF. Выберите алгоритм для извлечения текста из картинок и PDF. Для чистых документов лучше подходит Tesseract, для фото — PaddleOCR.</p>
 
             <div style="display: flex; flex-direction: column; gap: 12px;">
 
@@ -333,7 +333,7 @@
                     style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);"
                     id="ocr-container-paddleocr">
                     <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('paddleocr')">
-                        <input type="radio" name="ocr_engine" value="paddleocr" id="ocr-radio-paddleocr"
+                        <input type="radio" name="ocr_engine" value="paddleocr" id="ocr-radio-paddleocr" checked
                             style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
                         <div>
                             <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
