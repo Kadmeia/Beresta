@@ -2,6 +2,7 @@
             /* Premium Light Theme */
             --bg-color: transparent;
             --container-bg: rgba(255, 255, 255, 0.65);
+            --modal-bg: rgba(255, 255, 255, 0.95);
             --container-border: rgba(255, 255, 255, 0.5);
             --text-main: #0f172a;
             --text-muted: #64748b;
@@ -23,6 +24,7 @@
             /* Olive/Orange Premium Dark Theme */
             --bg-color: transparent;
             --container-bg: rgba(51, 56, 45, 0.75);
+            --modal-bg: rgba(51, 56, 45, 0.95);
             --container-border: rgba(255, 255, 255, 0.08);
             --text-main: #ffffff;
             --text-muted: #e7e5e4;
