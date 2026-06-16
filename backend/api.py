@@ -81,6 +81,23 @@ class Api:
             print(f"Error saving dropped file: {e}")
             return None
 
+    def check_paddleocr(self):
+        return self.docx_processor.pdf_processor.check_paddleocr_exists()
+
+    def download_paddleocr(self):
+        import threading
+        def dl_task():
+            success = self.docx_processor.pdf_processor.download_paddleocr(self.send_status)
+            if success:
+                self.send_status("Скачивание завершено. PaddleOCR готов.")
+                # Force frontend to refresh
+                if self.window:
+                    self.window.evaluate_js('window.checkOcrStatus && window.checkOcrStatus();')
+        
+        t = threading.Thread(target=dl_task)
+        t.start()
+        return "Started"
+
     def check_model(self):
         """Called by frontend on startup. Returns true if ANY model exists."""
         active = self.model_manager.get_active_model_type()

@@ -1,7 +1,6 @@
 import os
 import fitz  # PyMuPDF
 from pypdf import PdfReader, PdfWriter
-import pytesseract
 from PIL import Image, ImageEnhance, ImageStat
 import io
 import re
@@ -9,8 +8,6 @@ import numpy as np
 
 class PDFProcessor:
     def __init__(self):
-        # Update tesseract cmd path if needed for Windows packaging
-        # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
         self.ocr_engine = 'paddleocr'
         self.paddle_ocr = None
         self.model_storage_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'paddleocr')
@@ -78,13 +75,12 @@ class PDFProcessor:
             except Exception as e:
                 print(f"PaddleOCR Error: {e}")
                 if status_callback:
-                    status_callback("Ошибка PaddleOCR, переключаемся на Tesseract...")
-                # Fallback to Tesseract
-                return pytesseract.image_to_string(img, lang='rus+eng')
+                    status_callback("Ошибка PaddleOCR.")
+                return ""
         elif self.ocr_engine == 'applevision':
             import sys
             if sys.platform != 'darwin':
-                return pytesseract.image_to_string(img, lang='rus+eng')
+                return ""
             try:
                 if status_callback:
                     status_callback("Распознавание текста через Apple Vision...")
@@ -92,10 +88,10 @@ class PDFProcessor:
             except Exception as e:
                 print(f"Apple Vision Error: {e}")
                 if status_callback:
-                    status_callback("Ошибка Apple Vision, переключаемся на Tesseract...")
-                return pytesseract.image_to_string(img, lang='rus+eng')
+                    status_callback("Ошибка Apple Vision.")
+                return ""
         else:
-            return pytesseract.image_to_string(img, lang='rus+eng')
+            return ""
 
     def extract_text(self, file_path, status_callback=None):
         if self.check_encryption(file_path):
@@ -216,3 +212,41 @@ class PDFProcessor:
             writer.write(f)
             
         return final_path
+
+    def check_paddleocr_exists(self):
+        # PaddleOCR downloads det, rec, and cls folders
+        if not os.path.exists(self.model_storage_dir):
+            return False
+        
+        has_det = os.path.exists(os.path.join(self.model_storage_dir, 'det'))
+        has_rec = os.path.exists(os.path.join(self.model_storage_dir, 'rec'))
+        has_cls = os.path.exists(os.path.join(self.model_storage_dir, 'cls'))
+        
+        return has_det and has_rec and has_cls
+
+    def download_paddleocr(self, progress_callback=None):
+        if self.check_paddleocr_exists():
+            if progress_callback: progress_callback("PaddleOCR уже установлен.")
+            return True
+            
+        if progress_callback:
+            progress_callback("Скачивание моделей OCR (PaddleOCR)... Это займет некоторое время.")
+            
+        try:
+            from paddleocr import PaddleOCR
+            import logging
+            logging.getLogger('ppocr').setLevel(logging.ERROR)
+            os.makedirs(self.model_storage_dir, exist_ok=True)
+            # Initialization triggers the download
+            self.paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ru', 
+                                      det_model_dir=os.path.join(self.model_storage_dir, 'det'), 
+                                      rec_model_dir=os.path.join(self.model_storage_dir, 'rec'), 
+                                      cls_model_dir=os.path.join(self.model_storage_dir, 'cls'), 
+                                      show_log=False)
+            if progress_callback:
+                progress_callback("Скачивание OCR завершено. Модель готова.")
+            return True
+        except Exception as e:
+            if progress_callback:
+                progress_callback(f"Ошибка скачивания OCR: {str(e)}")
+            return False

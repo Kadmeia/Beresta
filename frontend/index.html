@@ -325,35 +325,30 @@
                     style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); transition: color 0.2s;">✖</button>
             </div>
             <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Выберите
-                алгоритм для извлечения текста из картинок и PDF. Для чистых документов лучше подходит Tesseract, для
-                фото — EasyOCR.</p>
+                алгоритм для извлечения текста из картинок и PDF. Вы можете использовать встроенную нейросеть Apple Vision (работает моментально) или скачать мощную модель PaddleOCR (для кривых сканов и фото).</p>
 
             <div style="display: flex; flex-direction: column; gap: 12px;">
-                <label
-                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: var(--transition);"
-                    id="ocr-label-tesseract" onclick="setOcrEngine('tesseract')">
-                    <input type="radio" name="ocr_engine" value="tesseract"
-                        style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
-                    <div>
-                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
-                            Tesseract (Быстрый)</div>
-                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Идеален для чистых
-                            документов, актов, договоров. Работает моментально.</div>
-                    </div>
-                </label>
-                <label
-                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: var(--transition);"
-                    id="ocr-label-paddleocr" onclick="setOcrEngine('paddleocr')">
-                    <input type="radio" name="ocr_engine" value="paddleocr" checked
-                        style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
-                    <div>
-                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
-                            PaddleOCR (Нейросеть)</div>
-                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Читает
-                            фото со смартфона, кривые сканы. Отличная скорость и точность.
+
+                <div
+                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);"
+                    id="ocr-container-paddleocr">
+                    <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('paddleocr')">
+                        <input type="radio" name="ocr_engine" value="paddleocr" id="ocr-radio-paddleocr"
+                            style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                        <div>
+                            <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
+                                PaddleOCR <span style="font-size: 0.75rem; background: var(--border-color); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">~150 МБ</span></div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Мощная нейросеть. Читает фото со смартфона, кривые сканы. Отличная скорость и точность.</div>
                         </div>
+                    </label>
+                    <button id="btn-download-paddle" onclick="downloadPaddleOCR()" class="btn-outline" style="width: 100%; margin-top: 4px;">
+                        Скачать (~150 МБ)
+                    </button>
+                    <div id="paddle-downloaded-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        Модель скачана и готова
                     </div>
-                </label>
+                </div>
                 <label
                     style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: none; align-items: flex-start; gap: 12px; transition: var(--transition);"
                     id="ocr-label-applevision" onclick="setOcrEngine('applevision')">
@@ -504,6 +499,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             loadSettings();
+            window.checkOcrStatus();
             
             const inputs = [
                 document.getElementById('opt-parties'),
