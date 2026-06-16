@@ -8,11 +8,11 @@
             --text-muted: #64748b;
             --accent: #10b981;
             --accent-hover: #059669;
-            --border-color: rgba(255, 255, 255, 0.4);
+            --border-color: rgba(15, 23, 42, 0.15);
             --drop-bg: rgba(255, 255, 255, 0.5);
-            --drop-border: #cbd5e1;
-            --toggle-bg: rgba(255, 255, 255, 0.7);
-            --theme-switch-bg: rgba(255, 255, 255, 0.6);
+            --drop-border: rgba(15, 23, 42, 0.2);
+            --toggle-bg: rgba(15, 23, 42, 0.05);
+            --theme-switch-bg: rgba(15, 23, 42, 0.05);
             --theme-switch-active: #ffffff;
             --input-bg: rgba(255, 255, 255, 0.8);
             --shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
