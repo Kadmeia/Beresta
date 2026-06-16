@@ -1069,7 +1069,7 @@
                     </svg>
                 </div>
                 <p id="drop-text">Положите грамоты сюда или нажмите для выбора</p>
-                <span>Принимаем бересту формата: .pdf</span>
+                <span>Принимаем бересту формата: .pdf, .docx</span>
                 <div id="file-list" class="file-list"></div>
                 <button class="btn-outline" id="clear-files-btn"
                     style="display: none; margin: 10px auto 0; padding: 4px 12px; font-size: 12px;"
@@ -1666,6 +1666,13 @@
         }
 
         function addFilesToList(newFiles) {
+            for (let i = 0; i < newFiles.length; i++) {
+                const ext = newFiles[i].split('.').pop().toLowerCase();
+                if (ext !== 'pdf' && ext !== 'docx') {
+                    alert("Формат не поддерживается. Загрузите только PDF или DOCX.");
+                    return;
+                }
+            }
             // Убираем дубликаты
             const uniqueFiles = newFiles.filter(f => !selectedFiles.includes(f));
             selectedFiles = selectedFiles.concat(uniqueFiles);
@@ -1968,7 +1975,8 @@
             newName = newName.replace(/["]+/g, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
             if (!newName) newName = `Документ ${index + 1}`;
 
-            return newName + '.pdf';
+            const originalExt = selectedFiles[0].split('.').pop().toLowerCase();
+            return newName + '.' + originalExt;
         }
 
         function triggerAutoName(index) {

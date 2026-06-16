@@ -4,11 +4,13 @@ import json
 from .model_manager import ModelManager
 from .pdf_processor import PDFProcessor
 from .llm_handler import LLMHandler
+from .docx_processor import DocxProcessor
 
 class Api:
     def __init__(self):
         self.model_manager = ModelManager()
         self.pdf_processor = PDFProcessor()
+        self.docx_processor = DocxProcessor()
         self.llm_handler = None
         self.window = None
 
@@ -32,7 +34,7 @@ class Api:
     def open_file_dialog(self):
         import webview
         if self.window:
-            file_types = ('PDF Грамоты (*.pdf)', 'Все файлы (*.*)')
+            file_types = ('Документы (*.pdf;*.docx)', 'Все файлы (*.*)')
             result = self.window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True, file_types=file_types)
             return result if result else []
         return []
@@ -197,7 +199,11 @@ class Api:
         for path in file_paths:
             self.send_status(f"Анализируем грамоту: {os.path.basename(path)}...")
             try:
-                pages_text = self.pdf_processor.extract_text(path, self.send_status)
+                is_docx = path.lower().endswith('.docx')
+                if is_docx:
+                    pages_text = self.docx_processor.extract_text(path, self.send_status)
+                else:
+                    pages_text = self.pdf_processor.extract_text(path, self.send_status)
                 
                 current_doc = None
                 
@@ -205,7 +211,7 @@ class Api:
                     page_num = p['page_num']
                     text = p['text'][:1500]
                     
-                    if mode == "rename":
+                    if mode == "rename" or is_docx:
                         is_new = False
                     else:
                         is_new = is_new_document_start(text)
@@ -244,17 +250,18 @@ class Api:
                             analysis = self.llm_handler.analyze_text(expanded_text, page_num, retry=retries)
 
                         b64_image = ""
-                        try:
-                            import fitz
-                            import base64
-                            tmp_doc = fitz.open(path)
-                            tmp_page = tmp_doc[page_num - 1]
-                            pix = tmp_page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-                            img_data = pix.tobytes("jpeg", 80)
-                            b64_image = base64.b64encode(img_data).decode("utf-8")
-                            tmp_doc.close()
-                        except Exception as e:
-                            print(f"Error generating preview image: {e}")
+                        if not is_docx:
+                            try:
+                                import fitz
+                                import base64
+                                tmp_doc = fitz.open(path)
+                                tmp_page = tmp_doc[page_num - 1]
+                                pix = tmp_page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                                img_data = pix.tobytes("jpeg", 80)
+                                b64_image = base64.b64encode(img_data).decode("utf-8")
+                                tmp_doc.close()
+                            except Exception as e:
+                                print(f"Error generating preview image: {e}")
 
                         # Закрываем предыдущий документ
                         if current_doc:
@@ -293,41 +300,53 @@ class Api:
 
     def save_documents(self, preview_data, output_dir):
         """
-        Takes the edited preview data from frontend and splits/saves PDFs.
+        Takes the edited preview data from frontend and splits/saves PDFs or DOCXs.
         """
         import re
         saved_files = []
         for item in preview_data:
-            original_path = item.get('original_file')
-            start_page = item.get('start_page')
-            end_page = item.get('end_page')
-            
-            # Construct new name based on frontend settings
-            # We assume frontend passes the finalized 'new_name' field
-            new_name = item.get('new_name')
-            if not new_name:
-                # fallback
-                new_name = f"{item.get('short_name', 'Документ')} {item.get('date', '')}".strip()
-                
-            # Очистка имени файла
-            new_name = re.sub(r'[\\/*?:"<>|]', "", new_name)
-            new_name = new_name.replace("Ошибка", "").strip()
-            if not new_name:
-                new_name = f"Документ_стр_{start_page}"
-                
             try:
-                # Если папка не выбрана, сохраняем туда же, где лежит оригинальный файл
-                current_output_dir = output_dir.strip() if output_dir else os.path.dirname(original_path)
+                original_path = item.get('original_file')
+                start_page = int(item.get('start_page', 1))
+                end_page = int(item.get('end_page', 1))
                 
-                # Создаем папку, если её нет
+                # Construct new name based on frontend settings
+                # We assume frontend passes the finalized 'new_name' field
+                new_name = item.get('new_name')
+                if not new_name:
+                    # fallback
+                    new_name = f"{item.get('short_name', 'Документ')} {item.get('date', '')}".strip()
+                    
+                # Очистка имени файла
+                new_name = re.sub(r'[\\/*?:"<>|]', "", new_name)
+                new_name = new_name.replace("Ошибка", "").strip()
+                if not new_name:
+                    new_name = f"Документ_стр_{start_page}"
+                
+                current_output_dir = output_dir.strip() if output_dir else os.path.dirname(original_path)
                 os.makedirs(current_output_dir, exist_ok=True)
                 
-                final_path = self.pdf_processor.split_and_save(
-                    original_path, start_page, end_page, new_name, current_output_dir
-                )
+                self.send_status(f"Сохранение: {new_name}...")
+                
+                if original_path.lower().endswith('.docx'):
+                    # Save docx without splitting
+                    final_path = self.docx_processor.copy_and_save(
+                        original_path, 
+                        new_name, 
+                        current_output_dir
+                    )
+                else:
+                    # Save pdf
+                    final_path = self.pdf_processor.split_and_save(
+                        original_path, 
+                        start_page, 
+                        end_page, 
+                        new_name, 
+                        current_output_dir
+                    )
                 saved_files.append(final_path)
             except Exception as e:
-                error_msg = f"Ошибка сохранения {new_name} в {current_output_dir}: {e}"
+                error_msg = f"Ошибка сохранения в {current_output_dir}: {e}"
                 print(error_msg)
                 raise ValueError(error_msg)
                 
