@@ -11,7 +11,7 @@ class PDFProcessor:
     def __init__(self):
         # Update tesseract cmd path if needed for Windows packaging
         # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-        self.ocr_engine = 'tesseract'
+        self.ocr_engine = 'paddleocr'
         self.paddle_ocr = None
         self.model_storage_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'paddleocr')
 
