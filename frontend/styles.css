@@ -393,9 +393,6 @@
             gap: 8px;
         }
 
-        .btn-primary:hover {
-            background: var(--accent-hover);
-        }
         .btn-primary:active {
             transform: scale(0.96);
         }
