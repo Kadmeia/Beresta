@@ -314,9 +314,10 @@
 
     <!-- Модальное окно выбора OCR -->
     <div id="ocr-select-overlay" class="hidden opacity-0 transition-all duration-300"
-        style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;">
+        style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;"
+        onclick="if(event.target === this) closeOcrManager()">
         <div class="scale-95 transition-all duration-300"
-            style="background: var(--bg-color); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+            style="background: var(--container-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Движок распознавания сканов (OCR)
                 </h3>
