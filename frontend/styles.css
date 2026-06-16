@@ -20,22 +20,22 @@
         }
 
         [data-theme="dark"] {
-            /* Premium Dark Theme */
+            /* Olive/Orange Premium Dark Theme */
             --bg-color: transparent;
-            --container-bg: rgba(15, 23, 42, 0.65);
-            --container-border: rgba(255, 255, 255, 0.1);
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --accent: #38bdf8;
-            --accent-hover: #0284c7;
+            --container-bg: rgba(51, 56, 45, 0.75);
+            --container-border: rgba(255, 255, 255, 0.08);
+            --text-main: #ffffff;
+            --text-muted: #e7e5e4;
+            --accent: #f59e0b;
+            --accent-hover: #d97706;
             --border-color: rgba(255, 255, 255, 0.1);
-            --drop-bg: rgba(30, 41, 59, 0.5);
+            --drop-bg: rgba(46, 51, 41, 0.5);
             --drop-border: rgba(255, 255, 255, 0.2);
-            --toggle-bg: rgba(30, 41, 59, 0.7);
-            --theme-switch-bg: rgba(15, 23, 42, 0.6);
-            --theme-switch-active: rgba(51, 65, 85, 0.9);
-            --input-bg: rgba(15, 23, 42, 0.8);
-            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            --toggle-bg: rgba(77, 84, 69, 0.7);
+            --theme-switch-bg: rgba(42, 45, 36, 0.6);
+            --theme-switch-active: rgba(77, 84, 69, 0.9);
+            --input-bg: rgba(42, 45, 36, 0.8);
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
             --glass-blur: blur(20px);
         }
 
@@ -68,7 +68,7 @@
         }
 
         [data-theme="dark"] body {
-            background: linear-gradient(-45deg, #0f172a, #064e3b, #451a03, #4c1d95);
+            background: linear-gradient(-45deg, #1c1e18, #2a2d24, #33382d, #20231c);
             background-size: 400% 400%;
             animation: gradientBG 15s ease infinite;
         }
@@ -1046,7 +1046,7 @@
         }
         
         [data-theme="dark"] .btn-primary {
-            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
         }
 
         .btn-primary:hover {
