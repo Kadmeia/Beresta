@@ -388,7 +388,9 @@
 
         .btn-primary:hover {
             background: var(--accent-hover);
-            transform: translateY(-1px);
+        }
+        .btn-primary:active {
+            transform: scale(0.96);
         }
 
         [data-theme="dark"] .btn-primary {
@@ -1009,8 +1011,10 @@
         }
         
         .btn-primary:hover, .btn-secondary:hover {
-            transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .btn-primary:active, .btn-secondary:active {
+            transform: scale(0.96);
         }
         /* Additional Premium Styles */
         .doc-table tbody tr {
@@ -1039,7 +1043,6 @@
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
         }
 
