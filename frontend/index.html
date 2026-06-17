@@ -255,6 +255,17 @@
                 Telegram-канал
             </a>
 
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLSeRovyXEE7bcujfvW-QMrbvr4I3Sp-LGOHYlQv1WZqPksseCg/viewform?usp=dialog" target="_blank"
+                class="flex items-center gap-2 text-slate-500 dark:text-slate-400 transition-colors font-medium"
+                style="text-decoration: none;"
+                onmouseover="this.style.color='#10b981'"
+                onmouseout="this.style.color=''">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+                Направить пожелание
+            </a>
+
             <a href="#" onclick="showSupportModal('https://www.tinkoff.ru/rm/r_cNLDGIyQuz.TzrqnfAGGL/G4xqW19880')"
                 class="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 transition-colors font-medium"
                 style="text-decoration: none;">
@@ -349,6 +360,27 @@
                         Модель скачана и готова
                     </div>
                 </div>
+
+                <div
+                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);"
+                    id="ocr-container-tesseract">
+                    <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('tesseract')">
+                        <input type="radio" name="ocr_engine" value="tesseract" id="ocr-radio-tesseract"
+                            style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                        <div>
+                            <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
+                                Tesseract OCR <span style="font-size: 0.75rem; background: var(--border-color); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">~40 МБ</span></div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Классический движок. Хорошо справляется с чистыми сканами и документами с хорошим качеством.</div>
+                        </div>
+                    </label>
+                    <button id="btn-download-tesseract" onclick="downloadTesseract()" class="btn-outline" style="width: 100%; margin-top: 4px;">
+                        Скачать (~40 МБ)
+                    </button>
+                    <div id="tesseract-downloaded-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        Модель скачана и готова
+                    </div>
+                </div>
                 <label
                     style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: none; align-items: flex-start; gap: 12px; transition: var(--transition);"
                     id="ocr-label-applevision" onclick="setOcrEngine('applevision')">
@@ -379,6 +411,18 @@
             <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Отсканируйте QR-код для
                 быстрого перевода:</p>
             <div id="qrcode-container" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
+            
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">Или переводом по номеру карты:</p>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px; background: var(--container-bg); padding: 8px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <span id="card-number" style="font-family: monospace; font-size: 1.1rem; color: var(--text-main); font-weight: 600;">5536 9137 6905 7999</span>
+                <button onclick="copyCardNumber()" title="Скопировать" style="background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition);" onmouseover="this.style.color='var(--accent)';" onmouseout="this.style.color='var(--text-muted)';">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                </button>
+            </div>
+
             <a id="support-link" href="#" target="_blank" class="btn-primary"
                 style="display: block; margin-top: 24px; padding: 12px; text-decoration: none; border-radius: 8px;">Перейти
                 по ссылке</a>
@@ -423,16 +467,22 @@
 
         function setOcrEngine(engine) {
             // Update UI styles
-            document.getElementById('ocr-label-tesseract').style.borderColor = engine === 'tesseract' ? 'var(--accent)' : 'var(--border-color)';
-            document.getElementById('ocr-label-tesseract').style.background = engine === 'tesseract' ? 'rgba(45, 106, 79, 0.05)' : 'transparent';
+            const containers = {
+                'tesseract': document.getElementById('ocr-container-tesseract'),
+                'paddleocr': document.getElementById('ocr-container-paddleocr'),
+                'applevision': document.getElementById('ocr-label-applevision')
+            };
 
-            document.getElementById('ocr-label-easyocr').style.borderColor = engine === 'easyocr' ? 'var(--accent)' : 'var(--border-color)';
-            document.getElementById('ocr-label-easyocr').style.background = engine === 'easyocr' ? 'rgba(45, 106, 79, 0.05)' : 'transparent';
-
-            // Set dark mode highlights if needed
-            if (document.documentElement.getAttribute('data-theme') === 'dark') {
-                if (engine === 'tesseract') document.getElementById('ocr-label-tesseract').style.background = 'rgba(245, 158, 11, 0.05)';
-                if (engine === 'easyocr') document.getElementById('ocr-label-easyocr').style.background = 'rgba(245, 158, 11, 0.05)';
+            for (const [key, el] of Object.entries(containers)) {
+                if (el) {
+                    el.style.borderColor = engine === key ? 'var(--accent)' : 'var(--border-color)';
+                    el.style.background = 'transparent';
+                    
+                    if (engine === key) {
+                        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                        el.style.background = isDark ? 'rgba(245, 158, 11, 0.05)' : 'rgba(45, 106, 79, 0.05)';
+                    }
+                }
             }
 
             // Sync with backend
@@ -462,7 +512,87 @@
                     setOcrEngine(engine);
                 }
             });
+            window.checkOcrStatus();
         });
+
+        window.checkOcrStatus = function() {
+            if (window.pywebview) {
+                if (pywebview.api.check_paddleocr) {
+                    pywebview.api.check_paddleocr().then(exists => {
+                        const btn = document.getElementById('btn-download-paddle');
+                        const mark = document.getElementById('paddle-downloaded-mark');
+                        if (exists) {
+                            if(btn) btn.style.display = 'none';
+                            if(mark) mark.style.display = 'flex';
+                        } else {
+                            if(btn) btn.style.display = 'block';
+                            if(mark) mark.style.display = 'none';
+                        }
+                    });
+                }
+                if (pywebview.api.check_tesseract) {
+                    pywebview.api.check_tesseract().then(exists => {
+                        const btn = document.getElementById('btn-download-tesseract');
+                        const mark = document.getElementById('tesseract-downloaded-mark');
+                        if (exists) {
+                            if(btn) btn.style.display = 'none';
+                            if(mark) mark.style.display = 'flex';
+                        } else {
+                            if(btn) btn.style.display = 'block';
+                            if(mark) mark.style.display = 'none';
+                        }
+                    });
+                }
+            }
+        };
+
+        function downloadPaddleOCR() {
+            closeOcrManager();
+            document.getElementById('progress-container').style.display = 'block';
+            document.getElementById('action-btn').style.display = 'none';
+            document.getElementById('progress-text').innerText = "Подготовка к скачиванию PaddleOCR...";
+
+            if (window.pywebview && pywebview.api.download_paddleocr) {
+                pywebview.api.download_paddleocr().then((success) => {
+                    document.getElementById('action-btn').style.display = 'block';
+                    document.getElementById('progress-container').style.display = 'none';
+                    if (success) {
+                        window.checkOcrStatus();
+                        manageOcr();
+                    } else {
+                        alert("Ошибка при скачивании PaddleOCR.");
+                    }
+                }).catch(err => {
+                    document.getElementById('action-btn').style.display = 'block';
+                    document.getElementById('progress-container').style.display = 'none';
+                    alert("Произошла ошибка: " + err);
+                });
+            }
+        }
+
+        function downloadTesseract() {
+            closeOcrManager();
+            document.getElementById('progress-container').style.display = 'block';
+            document.getElementById('action-btn').style.display = 'none';
+            document.getElementById('progress-text').innerText = "Подготовка к скачиванию Tesseract OCR...";
+
+            if (window.pywebview && pywebview.api.download_tesseract) {
+                pywebview.api.download_tesseract().then((success) => {
+                    document.getElementById('action-btn').style.display = 'block';
+                    document.getElementById('progress-container').style.display = 'none';
+                    if (success) {
+                        window.checkOcrStatus();
+                        manageOcr();
+                    } else {
+                        alert("Ошибка при скачивании Tesseract OCR.");
+                    }
+                }).catch(err => {
+                    document.getElementById('action-btn').style.display = 'block';
+                    document.getElementById('progress-container').style.display = 'none';
+                    alert("Произошла ошибка: " + err);
+                });
+            }
+        }
 
         function saveSettings() {
             const settings = {
@@ -1177,6 +1307,14 @@
                 modal.classList.remove('scale-95');
                 modal.classList.add('scale-100');
             }, 10);
+        }
+
+        function copyCardNumber() {
+            navigator.clipboard.writeText("5536 9137 6905 7999").then(() => {
+                alert("Номер карты скопирован!");
+            }).catch(err => {
+                console.error("Не удалось скопировать текст: ", err);
+            });
         }
 
         function closeSupportModal() {

@@ -9,8 +9,12 @@ import numpy as np
 
 class PDFProcessor:
     def __init__(self):
-        # Update tesseract cmd path if needed for Windows packaging
-        # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        import sys
+        if sys.platform == 'win32':
+            tess_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'tesseract')
+            exe_path = os.path.join(tess_dir, 'tesseract.exe')
+            if os.path.exists(exe_path):
+                pytesseract.pytesseract.tesseract_cmd = exe_path
         self.ocr_engine = 'paddleocr'
         self.paddle_ocr = None
         self.model_storage_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'paddleocr')
@@ -60,8 +64,7 @@ class PDFProcessor:
                     import logging
                     # Suppress paddle verbose logging
                     logging.getLogger('ppocr').setLevel(logging.ERROR)
-                    os.makedirs(self.model_storage_dir, exist_ok=True)
-                    self.paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ru', det_model_dir=os.path.join(self.model_storage_dir, 'det'), rec_model_dir=os.path.join(self.model_storage_dir, 'rec'), cls_model_dir=os.path.join(self.model_storage_dir, 'cls'), show_log=False)
+                    self.paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ru')
                 
                 # PaddleOCR expects numpy array (BGR or RGB)
                 img_np = np.array(img.convert('RGB'))
@@ -218,15 +221,16 @@ class PDFProcessor:
         return final_path
 
     def check_paddleocr_exists(self):
-        # PaddleOCR downloads det, rec, and cls folders
-        if not os.path.exists(self.model_storage_dir):
-            return False
+        default_dir1 = os.path.expanduser('~/.paddleocr')
+        default_dir2 = os.path.expanduser('~/.paddlex')
         
-        has_det = os.path.exists(os.path.join(self.model_storage_dir, 'det'))
-        has_rec = os.path.exists(os.path.join(self.model_storage_dir, 'rec'))
-        has_cls = os.path.exists(os.path.join(self.model_storage_dir, 'cls'))
+        # Если хотя бы одна из этих папок существует и не пустая, значит модели скачаны
+        if os.path.exists(default_dir1) and len(os.listdir(default_dir1)) > 0:
+            return True
+        if os.path.exists(default_dir2) and len(os.listdir(default_dir2)) > 0:
+            return True
         
-        return has_det and has_rec and has_cls
+        return False
 
     def download_paddleocr(self, progress_callback=None):
         if self.check_paddleocr_exists():
@@ -237,20 +241,168 @@ class PDFProcessor:
             progress_callback("Скачивание моделей OCR (PaddleOCR)... Это займет некоторое время.")
             
         try:
+            import sys
+            import re
+            
+            class ProgressCatcher:
+                def __init__(self, orig, cb):
+                    self.orig = orig
+                    self.cb = cb
+                    self.last_pct = ""
+                    
+                def write(self, data):
+                    self.orig.write(data)
+                    match = re.search(r'(\d+)%', data)
+                    if match:
+                        pct = match.group(1)
+                        if pct != self.last_pct:
+                            self.last_pct = pct
+                            if self.cb:
+                                self.cb(f"Скачивание моделей: {pct}%")
+                    elif "Downloading [" in data:
+                        match_file = re.search(r'Downloading \[(.*?)\]', data)
+                        if match_file and self.cb:
+                            self.cb(f"Загрузка файла: {match_file.group(1)}...")
+                            
+                def flush(self):
+                    self.orig.flush()
+
+            orig_stderr = sys.stderr
+            sys.stderr = ProgressCatcher(orig_stderr, progress_callback)
+
             from paddleocr import PaddleOCR
             import logging
             logging.getLogger('ppocr').setLevel(logging.ERROR)
-            os.makedirs(self.model_storage_dir, exist_ok=True)
-            # Initialization triggers the download
-            self.paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ru', 
-                                      det_model_dir=os.path.join(self.model_storage_dir, 'det'), 
-                                      rec_model_dir=os.path.join(self.model_storage_dir, 'rec'), 
-                                      cls_model_dir=os.path.join(self.model_storage_dir, 'cls'), 
-                                      show_log=False)
+            self.paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ru')
+            
+            sys.stderr = orig_stderr
+            
             if progress_callback:
                 progress_callback("Скачивание OCR завершено. Модель готова.")
             return True
         except Exception as e:
+            if 'orig_stderr' in locals():
+                import sys
+                sys.stderr = orig_stderr
             if progress_callback:
                 progress_callback(f"Ошибка скачивания OCR: {str(e)}")
+            return False
+
+    def check_tesseract_exists(self):
+        import sys
+        import subprocess
+        if sys.platform != 'win32':
+            try:
+                subprocess.run(['tesseract', '-v'], capture_output=True, check=True)
+                return True
+            except:
+                return False
+                
+        tess_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'tesseract')
+        exe_path = os.path.join(tess_dir, 'tesseract.exe')
+        return os.path.exists(exe_path)
+
+    def download_tesseract(self, progress_callback=None):
+        import sys
+        import time
+        if self.check_tesseract_exists():
+            if progress_callback: progress_callback("Tesseract уже установлен.")
+            return True
+            
+        if sys.platform != 'win32':
+            import subprocess
+            import shutil
+            
+            brew_path = shutil.which('brew')
+            if not brew_path:
+                if os.path.exists('/opt/homebrew/bin/brew'):
+                    brew_path = '/opt/homebrew/bin/brew'
+                elif os.path.exists('/usr/local/bin/brew'):
+                    brew_path = '/usr/local/bin/brew'
+                else:
+                    if progress_callback:
+                        progress_callback("На Mac не установлен Homebrew. Установите его вручную с brew.sh")
+                    return False
+            
+            if progress_callback:
+                progress_callback("Установка Tesseract через Homebrew (это может занять время)...")
+            
+            try:
+                # На Маке ставим tesseract и русский язык к нему
+                process = subprocess.Popen([brew_path, 'install', 'tesseract', 'tesseract-lang'], 
+                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                for line in process.stdout:
+                    if progress_callback:
+                        msg = line.strip()
+                        if msg and not msg.startswith('==>'):
+                            # Выводим аккуратно, чтобы не заспамить интерфейс
+                            progress_callback(f"Установка: {msg[:60]}...")
+                
+                process.wait()
+                if process.returncode == 0:
+                    if progress_callback:
+                        progress_callback("Скачивание Tesseract завершено. Движок готов к работе.")
+                    return True
+                else:
+                    if progress_callback:
+                        progress_callback(f"Ошибка установки Homebrew (Код: {process.returncode})")
+                    return False
+            except Exception as e:
+                if progress_callback:
+                    progress_callback(f"Ошибка: {str(e)}")
+                return False
+            
+        if progress_callback:
+            progress_callback("Скачивание Tesseract OCR (~40 МБ)...")
+            
+        try:
+            import urllib.request
+            import zipfile
+            import shutil
+            
+            tess_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'tesseract')
+            
+            # Ссылка на ваш скачанный и загруженный куда-либо tesseract-portable.zip
+            # TODO: После загрузки архива на сервер, вставьте прямую ссылку сюда
+            download_url = "ВАША_ССЫЛКА_НА_TESSERACT_PORTABLE.ZIP" 
+            
+            zip_path = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'tess_temp.zip')
+            
+            # Если архив уже лежит в папке с проектом (для тестов)
+            local_zip = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tesseract-portable.zip")
+            if os.path.exists(local_zip):
+                if progress_callback:
+                    progress_callback("Найден локальный архив. Распаковка...")
+                zip_path = local_zip
+            else:
+                if progress_callback:
+                    progress_callback("Скачивание архива Tesseract (около 45 МБ)...")
+                # TODO: Раскомментировать когда будет реальная ссылка
+                # urllib.request.urlretrieve(download_url, zip_path)
+                pass # Пока нет ссылки, код просто пойдет дальше и упадет, если локального архива тоже нет
+
+            if progress_callback:
+                progress_callback("Распаковка файлов Tesseract...")
+                
+            os.makedirs(tess_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(tess_dir)
+                
+            # Если мы скачивали во временный файл, удаляем его
+            if zip_path != local_zip and os.path.exists(zip_path):
+                os.remove(zip_path)
+                
+            # Прописываем путь
+            exe_path = os.path.join(tess_dir, 'tesseract.exe')
+            if os.path.exists(exe_path):
+                import pytesseract
+                pytesseract.pytesseract.tesseract_cmd = exe_path
+
+            if progress_callback:
+                progress_callback("Скачивание Tesseract завершено. Движок готов к работе.")
+            return True
+            
+        except Exception as e:
+            if progress_callback:
+                progress_callback(f"Ошибка установки OCR: {str(e)}")
             return False

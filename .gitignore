@@ -30,3 +30,4 @@ __pycache__/
 !frontend/assets/*.pdf
 !Handwritten_*.pdf
 *.log
+tesseract-portable.zip
