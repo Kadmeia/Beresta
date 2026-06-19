@@ -74,8 +74,9 @@
 
         <main>
             <div class="mode-toggle">
-                <button class="mode-btn active" onclick="setMode('split', this)">Разделить свиток</button>
-                <button class="mode-btn" onclick="setMode('rename', this)">Наречь грамоты</button>
+                <button class="mode-btn active" id="mode-btn-split" onclick="setMode('split', this)">Разделить свиток</button>
+                <button class="mode-btn" id="mode-btn-rename" onclick="setMode('rename', this)">Наречь грамоты</button>
+                <button class="mode-btn" id="mode-btn-extract" onclick="setMode('extract', this)">Прочесть письмена</button>
             </div>
 
             <!-- Иконка: Свиток + Цифровые узлы -->
@@ -96,14 +97,14 @@
                     </svg>
                 </div>
                 <p id="drop-text">Положите грамоты сюда или нажмите для выбора</p>
-                <span>Принимаем бересту формата: .pdf, .docx</span>
+                <span id="dropzone-formats">Принимаем бересту формата: .pdf, .docx</span>
                 <div id="file-list" class="file-list"></div>
                 <button class="btn-outline" id="clear-files-btn"
                     style="display: none; margin: 10px auto 0; padding: 4px 12px; font-size: 12px;"
                     onclick="clearFiles(event)">Очистить список</button>
             </div>
 
-            <div class="settings-panel">
+            <div class="settings-panel" id="settings-rename">
                 <h3>Правила летописи (Именование)</h3>
                 <label class="toggle-label">
                     <span>Добавить "Стороны" (ООО "Ромашка" - ИП Иванов А.И.)</span>
@@ -141,6 +142,81 @@
                         <input type="text" class="text-input" placeholder="Например: _Архив">
                     </div>
                 </div>
+            </div>
+
+            <div class="settings-panel" id="settings-extract" style="display: none;">
+                <h3>Настройки перевода (OCR)</h3>
+                <div style="margin-bottom: 12px;">
+                    <span style="font-size: 0.9rem; color: var(--text-muted); display: block; margin-bottom: 8px;">Формат сохранения:</span>
+                    <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                        <label class="toggle-label" style="margin-bottom: 0;">
+                            <span style="margin-right: 8px;">Word (.docx)</span>
+                            <input type="checkbox" class="format-checkbox" data-format="docx" checked onchange="saveSettings()">
+                            <div class="toggle-slider"></div>
+                        </label>
+                        <label class="toggle-label" style="margin-bottom: 0;">
+                            <span style="margin-right: 8px;">Текст (.txt)</span>
+                            <input type="checkbox" class="format-checkbox" data-format="txt" onchange="saveSettings()">
+                            <div class="toggle-slider"></div>
+                        </label>
+                        <label class="toggle-label" style="margin-bottom: 0;">
+                            <span style="margin-right: 8px;">Markdown (.md)</span>
+                            <input type="checkbox" class="format-checkbox" data-format="md" onchange="saveSettings()">
+                            <div class="toggle-slider"></div>
+                        </label>
+                    </div>
+                </div>
+                <!-- Убран дублирующий пункт меню OCR, так как теперь есть общая кнопка в шапке -->
+                <input type="hidden" id="opt-layout-engine" value="basic">
+                <label class="toggle-label">
+                    <span>Разделять на самостоятельные документы</span>
+                    <input type="checkbox" id="opt-extract-split" checked onchange="saveSettings(); toggleExtractNamingOptions()">
+                    <div class="toggle-slider"></div>
+                </label>
+                
+                <div id="extract-naming-options" style="margin-top: 10px; margin-bottom: 15px; margin-left: 10px; padding-left: 10px; border-left: 2px solid var(--border-color); transition: all 0.3s;">
+                    <label class="toggle-label">
+                        <span>Добавить "Стороны" (ООО "Ромашка" - ИП Иванов А.И.)</span>
+                        <input type="checkbox" id="opt-extract-parties" checked onchange="triggerAllAutoNames(); saveSettings();">
+                        <div class="toggle-slider"></div>
+                    </label>
+                    <label class="toggle-label">
+                        <span>Использовать полное имя (Акт ... №1 от 15.11.2025 г.)</span>
+                        <input type="checkbox" id="opt-extract-full-name" checked onchange="toggleExtractNameMode('full'); saveSettings();">
+                        <div class="toggle-slider"></div>
+                    </label>
+                    <label class="toggle-label">
+                        <span>Использовать короткое имя (Акт, Договор, Приложение)</span>
+                        <input type="checkbox" id="opt-extract-short-name" onchange="toggleExtractNameMode('short'); saveSettings();">
+                        <div class="toggle-slider"></div>
+                    </label>
+                    <label class="toggle-label">
+                        <span>Указать количество листов (- 2 л)</span>
+                        <input type="checkbox" id="opt-extract-pages" checked onchange="triggerAllAutoNames(); saveSettings();">
+                        <div class="toggle-slider"></div>
+                    </label>
+                    <label class="toggle-label">
+                        <span>Добавить порядковый номер (1., 2., 3. ...)</span>
+                        <input type="checkbox" id="opt-extract-numbering" onchange="triggerAllAutoNames(); saveSettings();">
+                        <div class="toggle-slider"></div>
+                    </label>
+                    <div class="input-group">
+                        <div class="input-box">
+                            <span>Свой префикс</span>
+                            <input type="text" class="text-input" id="extract-prefix" placeholder="Например: 2025_" oninput="triggerAllAutoNames(); saveSettings();">
+                        </div>
+                        <div class="input-box">
+                            <span>Свой суффикс</span>
+                            <input type="text" class="text-input" id="extract-suffix" placeholder="Например: _Архив" oninput="triggerAllAutoNames(); saveSettings();">
+                        </div>
+                    </div>
+                </div>
+
+                <label class="toggle-label">
+                    <span>Использовать ИИ для исправления опечаток и пробелов</span>
+                    <input type="checkbox" id="opt-extract-ai" checked onchange="saveSettings()">
+                    <div class="toggle-slider"></div>
+                </label>
             </div>
 
             <div class="settings-panel">
@@ -212,7 +288,7 @@
                         onclick="resetTable()">Отмена</button>
                     <button class="btn-primary"
                         style="margin-top: 0; width: auto; font-family: inherit; font-size: 1rem; padding: 10px 20px;"
-                        onclick="saveDocuments()">Утвердить и сохранить</button>
+                        onclick="saveDocuments()">Сохранить</button>
                 </footer>
 
                 <!-- Модальное окно просмотра документа -->
@@ -222,8 +298,8 @@
                             <h4>Просмотр страницы <span id="previewPageNum">1</span></h4>
                             <button class="btn-close-modal" onclick="closePreview()">&times;</button>
                         </div>
-                        <div class="modal-body">
-                            <div class="scanned-document-mock">
+                        <div class="modal-body" style="display: flex; gap: 16px;">
+                            <div class="scanned-document-mock" id="preview-mock-pane" style="flex: 1;">
                                 <h3 style="text-align: center; margin-bottom: 20px; font-weight: bold;"
                                     id="previewDocTitle">ДОКУМЕНТ</h3>
                                 <p style="margin-bottom: 15px;">г. Москва <span style="float: right;">"__" _______ 202_
@@ -235,6 +311,10 @@
                                 </div>
                                 <img id="previewDocImage" src=""
                                     style="width: 100%; object-fit: contain; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 16px; display: none;" />
+                            </div>
+                            <div id="preview-text-pane" style="flex: 1; display: none; flex-direction: column; border-left: 1px solid var(--border-color); padding-left: 16px;">
+                                <h4 style="margin-top: 0; color: var(--text-main);">Распознанный текст (можно редактировать)</h4>
+                                <textarea id="previewDocEditText" style="flex: 1; width: 100%; height: 100%; min-height: 400px; resize: none; background: var(--input-bg); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; font-family: inherit; font-size: 13px; line-height: 1.5;"></textarea>
                             </div>
                         </div>
                     </div>
@@ -328,75 +408,70 @@
         style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;"
         onclick="if(event.target === this) closeOcrManager()">
         <div class="scale-95 transition-all duration-300"
-            style="background: var(--modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+            style="background: var(--modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 600px; width: 95%; box-shadow: var(--shadow); border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Движок распознавания сканов (OCR)
+                <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Движки извлечения текста
                 </h3>
                 <button onclick="closeOcrManager()"
                     style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); transition: color 0.2s;">✖</button>
             </div>
-            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Выберите
-                алгоритм для извлечения текста из картинок и PDF. Выберите алгоритм для извлечения текста из картинок и PDF. Для чистых документов лучше подходит Tesseract, для фото — PaddleOCR.</p>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Настройте алгоритмы, которые будут читать текст и воссоздавать таблицы из ваших сканов.</p>
 
             <div style="display: flex; flex-direction: column; gap: 12px;">
-
-                <div
-                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);"
-                    id="ocr-container-paddleocr">
+                
+                <div style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);" id="ocr-container-paddleocr">
                     <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('paddleocr')">
-                        <input type="radio" name="ocr_engine" value="paddleocr" id="ocr-radio-paddleocr" checked
-                            style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                        <input type="radio" name="ocr_engine" value="paddleocr" id="ocr-radio-paddleocr" checked style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
                         <div>
                             <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
-                                PaddleOCR <span style="font-size: 0.75rem; background: var(--border-color); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">~150 МБ</span></div>
-                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Мощная нейросеть. Читает фото со смартфона, кривые сканы. Отличная скорость и точность.</div>
+                                PaddleOCR <span style="font-size: 0.75rem; background: var(--border-color); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">По умолчанию</span></div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Мощная нейросеть. Читает фото со смартфона, кривые сканы. Отличная скорость и точность, но без сохранения таблиц.</div>
                         </div>
                     </label>
-                    <button id="btn-download-paddle" onclick="downloadPaddleOCR()" class="btn-outline" style="width: 100%; margin-top: 4px;">
-                        Скачать (~150 МБ)
-                    </button>
+                    <button id="btn-download-paddle" onclick="downloadPaddleOCR()" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~150 МБ)</button>
                     <div id="paddle-downloaded-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
-                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        Модель скачана и готова
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Модель скачана и готова
                     </div>
                 </div>
 
-                <div
-                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);"
-                    id="ocr-container-tesseract">
+                <div style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);" id="ocr-container-docling">
+                    <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('docling')">
+                        <input type="radio" name="ocr_engine" value="docling" id="ocr-radio-docling" style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                        <div>
+                            <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">Docling <span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Рекомендуется</span></div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Самая мощная модель от IBM. Идеально читает текст и переносит сложную структуру, стили и многостраничные таблицы.</div>
+                        </div>
+                    </label>
+                    <button id="btn-download-docling" onclick="downloadDocling()" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~3 ГБ)</button>
+                    <div id="docling-status-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;"></div>
+                </div>
+
+                <div style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);" id="ocr-container-tesseract">
                     <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('tesseract')">
-                        <input type="radio" name="ocr_engine" value="tesseract" id="ocr-radio-tesseract"
-                            style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+                        <input type="radio" name="ocr_engine" value="tesseract" id="ocr-radio-tesseract" style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
                         <div>
                             <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
                                 Tesseract OCR <span style="font-size: 0.75rem; background: var(--border-color); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">~40 МБ</span></div>
                             <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Классический движок. Хорошо справляется с чистыми сканами и документами с хорошим качеством.</div>
                         </div>
                     </label>
-                    <button id="btn-download-tesseract" onclick="downloadTesseract()" class="btn-outline" style="width: 100%; margin-top: 4px;">
-                        Скачать (~40 МБ)
-                    </button>
+                    <button id="btn-download-tesseract" onclick="downloadTesseract()" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~40 МБ)</button>
                     <div id="tesseract-downloaded-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
-                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        Модель скачана и готова
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Модель скачана и готова
                     </div>
                 </div>
-                <label
-                    style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: none; align-items: flex-start; gap: 12px; transition: var(--transition);"
-                    id="ocr-label-applevision" onclick="setOcrEngine('applevision')">
-                    <input type="radio" name="ocr_engine" value="applevision"
-                        style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
+
+                <label style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: none; align-items: flex-start; gap: 12px; transition: var(--transition);" id="ocr-label-applevision" onclick="setOcrEngine('applevision')">
+                    <input type="radio" name="ocr_engine" value="applevision" style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
                     <div>
-                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
-                            Apple Vision (Эксклюзив Mac)</div>
-                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Встроенная нейросеть Apple. Работает моментально, идеально распознает любой текст и фото.
-                        </div>
+                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">Apple Vision <span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Встроено (только для Mac)</span></div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Встроенная нейросеть Apple. Работает моментально, идеально распознает любой текст и фото.</div>
                     </div>
                 </label>
             </div>
 
             <button class="btn-primary" style="width: 100%; margin-top: 24px; padding: 12px; border-radius: 8px;"
-                onclick="closeOcrManager()">Готово</button>
+                onclick="closeOcrManager()">Сохранить настройки</button>
         </div>
     </div>
 
@@ -432,6 +507,29 @@
     </div>
 
     <script>
+        // Override default alert with custom Toast notification
+        window.alert = function(message) {
+            // Determine type based on message content
+            const type = (message && message.toString().toLowerCase().includes('ошибк')) ? 'error' : 'success';
+            showToast(message, type);
+        };
+        
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerText = message;
+            document.body.appendChild(toast);
+            
+            // Trigger reflow for animation
+            void toast.offsetWidth;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 400);
+            }, 3000);
+        }
+
         function setTheme(theme) {
             document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelector(`.theme-btn[data-theme-val="${theme}"]`).classList.add('active');
@@ -465,11 +563,42 @@
             triggerAllAutoNames();
         }
 
+        function toggleExtractNameMode(mode) {
+            const fullOpt = document.getElementById('opt-extract-full-name');
+            const shortOpt = document.getElementById('opt-extract-short-name');
+            if (mode === 'full') {
+                if (fullOpt.checked) shortOpt.checked = false;
+            } else if (mode === 'short') {
+                if (shortOpt.checked) fullOpt.checked = false;
+            }
+            triggerAllAutoNames();
+        }
+
+        function toggleExtractNamingOptions() {
+            const isSplit = document.getElementById('opt-extract-split').checked;
+            const panel = document.getElementById('extract-naming-options');
+            if (panel) {
+                if (isSplit) {
+                    panel.style.opacity = '1';
+                    panel.style.pointerEvents = 'auto';
+                } else {
+                    panel.style.opacity = '0.5';
+                    panel.style.pointerEvents = 'none';
+                }
+            }
+        }
+        
+        // Вызываем сразу для инициализации
+        window.addEventListener('DOMContentLoaded', () => {
+            toggleExtractNamingOptions();
+        });
+
         function setOcrEngine(engine) {
             // Update UI styles
             const containers = {
                 'tesseract': document.getElementById('ocr-container-tesseract'),
                 'paddleocr': document.getElementById('ocr-container-paddleocr'),
+                'docling': document.getElementById('ocr-container-docling'),
                 'applevision': document.getElementById('ocr-label-applevision')
             };
 
@@ -481,6 +610,9 @@
                     if (engine === key) {
                         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
                         el.style.background = isDark ? 'rgba(245, 158, 11, 0.05)' : 'rgba(45, 106, 79, 0.05)';
+                        
+                        let rdo = document.getElementById(`ocr-radio-${key}`);
+                        if(rdo) rdo.checked = true;
                     }
                 }
             }
@@ -603,7 +735,19 @@
                 optNumbering: document.getElementById('opt-numbering').checked,
                 prefix: document.querySelectorAll('.text-input')[0].value,
                 suffix: document.querySelectorAll('.text-input')[1].value,
-                outputDir: document.getElementById('output-dir').value
+                outputDir: document.getElementById('output-dir').value,
+                optExtractSplit: document.getElementById('opt-extract-split').checked,
+                optExtractAi: document.getElementById('opt-extract-ai').checked,
+                optLayoutEngine: document.getElementById('opt-layout-engine').value,
+                optExtractFormats: Array.from(document.querySelectorAll('.format-checkbox:checked')).map(b => b.dataset.format),
+                currentAppMode: currentAppMode,
+                optExtractParties: document.getElementById('opt-extract-parties') ? document.getElementById('opt-extract-parties').checked : true,
+                optExtractFullName: document.getElementById('opt-extract-full-name') ? document.getElementById('opt-extract-full-name').checked : true,
+                optExtractShortName: document.getElementById('opt-extract-short-name') ? document.getElementById('opt-extract-short-name').checked : false,
+                optExtractPages: document.getElementById('opt-extract-pages') ? document.getElementById('opt-extract-pages').checked : true,
+                optExtractNumbering: document.getElementById('opt-extract-numbering') ? document.getElementById('opt-extract-numbering').checked : false,
+                extractPrefix: document.getElementById('extract-prefix') ? document.getElementById('extract-prefix').value : "",
+                extractSuffix: document.getElementById('extract-suffix') ? document.getElementById('extract-suffix').value : ""
             };
             localStorage.setItem('beresta-settings', JSON.stringify(settings));
         }
@@ -613,14 +757,42 @@
             if (saved) {
                 try {
                     const settings = JSON.parse(saved);
-                    document.getElementById('opt-parties').checked = settings.optParties;
-                    document.getElementById('opt-full-name').checked = settings.optFullName;
-                    document.getElementById('opt-short-name').checked = settings.optShortName;
-                    document.getElementById('opt-pages').checked = settings.optPages;
-                    document.getElementById('opt-numbering').checked = settings.optNumbering;
+                    if (settings.theme === 'dark') toggleTheme('dark');
+                    if (settings.optParties !== undefined) document.getElementById('opt-parties').checked = settings.optParties;
+                    if (settings.optFullName !== undefined) document.getElementById('opt-full-name').checked = settings.optFullName;
+                    if (settings.optShortName !== undefined) document.getElementById('opt-short-name').checked = settings.optShortName;
+                    if (settings.optPages !== undefined) document.getElementById('opt-pages').checked = settings.optPages;
+                    if (settings.optNumbering !== undefined) document.getElementById('opt-numbering').checked = settings.optNumbering;
                     if (settings.prefix !== undefined) document.querySelectorAll('.text-input')[0].value = settings.prefix;
                     if (settings.suffix !== undefined) document.querySelectorAll('.text-input')[1].value = settings.suffix;
                     if (settings.outputDir !== undefined) document.getElementById('output-dir').value = settings.outputDir;
+                    if (settings.optExtractSplit !== undefined) document.getElementById('opt-extract-split').checked = settings.optExtractSplit;
+                    if (settings.optExtractAi !== undefined) document.getElementById('opt-extract-ai').checked = settings.optExtractAi;
+                    if (settings.optLayoutEngine !== undefined) {
+                        document.getElementById('opt-layout-engine').value = settings.optLayoutEngine;
+                        const layoutRadio = document.getElementById('layout-radio-' + settings.optLayoutEngine);
+                        if (layoutRadio) layoutRadio.checked = true;
+                        if (currentAppMode === 'extract') checkLayoutEngine();
+                    }
+                    if (settings.optExtractFormats !== undefined) {
+                        document.querySelectorAll('.format-checkbox').forEach(b => {
+                            b.checked = settings.optExtractFormats.includes(b.dataset.format);
+                        });
+                    }
+                    if (settings.optExtractParties !== undefined && document.getElementById('opt-extract-parties')) document.getElementById('opt-extract-parties').checked = settings.optExtractParties;
+                    if (settings.optExtractFullName !== undefined && document.getElementById('opt-extract-full-name')) document.getElementById('opt-extract-full-name').checked = settings.optExtractFullName;
+                    if (settings.optExtractShortName !== undefined && document.getElementById('opt-extract-short-name')) document.getElementById('opt-extract-short-name').checked = settings.optExtractShortName;
+                    if (settings.optExtractPages !== undefined && document.getElementById('opt-extract-pages')) document.getElementById('opt-extract-pages').checked = settings.optExtractPages;
+                    if (settings.optExtractNumbering !== undefined && document.getElementById('opt-extract-numbering')) document.getElementById('opt-extract-numbering').checked = settings.optExtractNumbering;
+                    if (settings.extractPrefix !== undefined && document.getElementById('extract-prefix')) document.getElementById('extract-prefix').value = settings.extractPrefix;
+                    if (settings.extractSuffix !== undefined && document.getElementById('extract-suffix')) document.getElementById('extract-suffix').value = settings.extractSuffix;
+                    
+                    if (typeof toggleExtractNamingOptions === 'function') toggleExtractNamingOptions();
+                    
+                    if (settings.currentAppMode) {
+                        const btn = document.getElementById('mode-btn-' + settings.currentAppMode);
+                        if (btn) setTimeout(() => setMode(settings.currentAppMode, btn), 50);
+                    }
                 } catch (e) {
                     console.error("Failed to load settings", e);
                 }
@@ -639,7 +811,17 @@
                 document.getElementById('opt-numbering'),
                 document.querySelectorAll('.text-input')[0],
                 document.querySelectorAll('.text-input')[1],
-                document.getElementById('output-dir')
+                document.getElementById('output-dir'),
+                document.getElementById('opt-extract-split'),
+                document.getElementById('opt-extract-ai'),
+                document.getElementById('opt-layout-engine'),
+                document.getElementById('opt-extract-parties'),
+                document.getElementById('opt-extract-full-name'),
+                document.getElementById('opt-extract-short-name'),
+                document.getElementById('opt-extract-pages'),
+                document.getElementById('opt-extract-numbering'),
+                document.getElementById('extract-prefix'),
+                document.getElementById('extract-suffix')
             ];
             
             inputs.forEach(input => {
@@ -647,6 +829,10 @@
                     input.addEventListener('change', saveSettings);
                     input.addEventListener('input', saveSettings);
                 }
+            });
+
+            document.querySelectorAll('input[name="export_format"]').forEach(radio => {
+                radio.addEventListener('change', saveSettings);
             });
         });
 
@@ -662,9 +848,50 @@
 
         function setMode(mode, btnElement) {
             currentAppMode = mode;
+            saveSettings();
             document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
             btnElement.classList.add('active');
-            document.getElementById('action-btn').innerText = mode === 'split' ? "Разобрать грамоты" : "Наречь грамоты";
+            
+            let actionText = "Разобрать грамоты";
+            let outputPlaceholder = "По умолчанию: папка исходной грамоты";
+            let dropText = "Положите грамоты сюда или нажмите для выбора";
+            
+            if (mode === 'rename') {
+                actionText = "Наречь грамоты";
+                outputPlaceholder = "По умолчанию: папка исходной грамоты";
+                dropText = "Положите грамоты сюда или нажмите для выбора";
+            }
+            if (mode === 'split') {
+                actionText = "Разделить свиток";
+                outputPlaceholder = "По умолчанию: папка исходного свитка";
+                dropText = "Положите свиток сюда или нажмите для выбора";
+            }
+            if (mode === 'extract') {
+                actionText = "Прочесть письмена";
+                outputPlaceholder = "По умолчанию: папка исходного документа";
+                dropText = "Положите письмена сюда или нажмите для выбора";
+            }
+            
+            document.getElementById('action-btn').innerText = actionText;
+            document.getElementById('output-dir').placeholder = outputPlaceholder;
+            const dropTextEl = document.getElementById('drop-text');
+            if (dropTextEl) {
+                dropTextEl.innerText = dropText;
+            }
+
+            const renamePanel = document.getElementById('settings-rename');
+            const extractPanel = document.getElementById('settings-extract');
+            const dropzoneFormats = document.getElementById('dropzone-formats');
+            
+            if (renamePanel) renamePanel.style.display = (mode === 'rename' || mode === 'split') ? 'block' : 'none';
+            if (extractPanel) extractPanel.style.display = mode === 'extract' ? 'block' : 'none';
+            if (dropzoneFormats) {
+                if (mode === 'extract') {
+                    dropzoneFormats.innerText = "Принимаем бересту: .pdf, .docx, .png, .jpg, .jpeg";
+                } else {
+                    dropzoneFormats.innerText = "Принимаем бересту: .pdf, .docx";
+                }
+            }
         }
 
         // --- PYWEBVIEW INTEGRATION ---
@@ -760,6 +987,9 @@
                 overlay.firstElementChild.classList.remove('scale-95');
                 overlay.firstElementChild.classList.add('scale-100');
             }, 10);
+            
+            // Check status of all engines when modal opens
+            checkAllLayoutEnginesStatus();
         }
 
         function closeOcrManager() {
@@ -824,8 +1054,8 @@
         function addFilesToList(newFiles) {
             for (let i = 0; i < newFiles.length; i++) {
                 const ext = newFiles[i].split('.').pop().toLowerCase();
-                if (ext !== 'pdf' && ext !== 'docx') {
-                    alert("Формат не поддерживается. Загрузите только PDF или DOCX.");
+                if (ext !== 'pdf' && ext !== 'docx' && ext !== 'png' && ext !== 'jpg' && ext !== 'jpeg') {
+                    alert("Формат не поддерживается. Загрузите PDF, DOCX или изображения (PNG, JPG).");
                     return;
                 }
             }
@@ -942,7 +1172,7 @@
 
         async function startProcessing() {
             if (isProcessing) {
-                showErrorModal("Система уже обрабатывает файлы!");
+                alert("Система уже обрабатывает файлы!");
                 return;
             }
             isProcessing = true;
@@ -964,23 +1194,75 @@
             progressText.innerText = "Чтение свитков...";
 
             try {
+                // Prepare extraction settings
+                const extractSettings = {
+                    split: document.getElementById('opt-extract-split').checked,
+                    use_ai: document.getElementById('opt-extract-ai').checked,
+                    layout_engine: document.getElementById('opt-layout-engine').value
+                };
+
+                // Check if layout engine is downloaded
+                if (currentAppMode === 'extract' && extractSettings.layout_engine !== 'basic') {
+                    const btnLayout = document.getElementById('btn-download-layout');
+                    if (btnLayout && btnLayout.style.display !== 'none') {
+                        alert("Сперва необходимо скачать выбранный модуль распознавания верстки!");
+                        btn.style.display = 'block';
+                        progressContainer.style.display = 'none';
+                        previewContainer.style.display = 'none';
+                        isProcessing = false;
+                        return;
+                    }
+                }
+
                 // Call python API
-                previewData = await pywebview.api.process_files(selectedFiles, currentAppMode);
+                previewData = await pywebview.api.process_files(selectedFiles, currentAppMode, extractSettings);
 
                 if (previewData && previewData.length > 0 && !previewData.error) {
-                    renderPreviewTable(previewData);
-                    progressContainer.style.display = 'none';
-                    previewContainer.style.display = 'flex';
-                    if (window.pywebview) pywebview.api.resize_window(1200, 920);
+                    if (currentAppMode === 'extract' && !extractSettings.split) {
+                        progressText.innerText = "Сохранение...";
+                        const exportFormats = Array.from(document.querySelectorAll('.format-checkbox:checked')).map(b => b.dataset.format);
+                        if (exportFormats.length === 0) exportFormats.push('docx'); // fallback
+                        
+                        const outDirInput = document.getElementById('output-dir').value.trim();
+                        const outDir = outDirInput || (selectedFiles.length > 0 ? selectedFiles[0].substring(0, selectedFiles[0].lastIndexOf("\\") > -1 ? selectedFiles[0].lastIndexOf("\\") : selectedFiles[0].lastIndexOf("/")) : ".");
+                        
+                        const dataToSave = previewData.map((item, idx) => {
+                            const origName = item.original_file.split(/[\\/]/).pop();
+                            const baseName = origName.substring(0, origName.lastIndexOf('.')) || origName;
+                            return {
+                                ...item,
+                                new_name: baseName // use original name
+                            };
+                        });
+                        
+                        await pywebview.api.save_documents(dataToSave, outDir, currentAppMode, exportFormats);
+                        
+                        document.getElementById('progress-container').style.display = 'none';
+                        document.getElementById('action-btn').style.display = 'flex';
+                        selectedFiles = [];
+                        document.getElementById('drop-text').innerText = "Положите грамоты сюда или нажмите для выбора";
+                        document.getElementById('file-list').innerHTML = "";
+                        isProcessing = false;
+                        if (window.pywebview) pywebview.api.resize_window(650, 920);
+                        alert("Документы успешно переведены в текст!");
+                    } else {
+                        renderPreviewTable(previewData);
+                        progressContainer.style.display = 'none';
+                        previewContainer.style.display = 'flex';
+                        if (window.pywebview) pywebview.api.resize_window(1200, 920);
+                        isProcessing = false;
+                    }
                 } else if (previewData.error) {
                     alert(previewData.error);
                     btn.style.display = 'block';
                     progressContainer.style.display = 'none';
+                    isProcessing = false;
                 }
             } catch (error) {
                 alert("Ошибка обработки: " + error);
                 btn.style.display = 'block';
                 progressContainer.style.display = 'none';
+                isProcessing = false;
             }
         }
 
@@ -1005,11 +1287,19 @@
                 if (typeof item.isManualEdit === 'undefined') item.isManualEdit = false;
                 if (typeof item.isActive === 'undefined') item.isActive = true;
 
-                const addParties = document.getElementById('opt-parties').checked;
-                const addPages = document.getElementById('opt-pages').checked;
-                const isFullName = document.getElementById('opt-full-name').checked;
-                const prefix = document.querySelectorAll('.text-input')[0].value.trim();
-                const suffix = document.querySelectorAll('.text-input')[1].value.trim();
+                let addParties = document.getElementById('opt-parties').checked;
+                let addPages = document.getElementById('opt-pages').checked;
+                let isFullName = document.getElementById('opt-full-name').checked;
+                let prefix = document.querySelectorAll('.text-input')[0].value.trim();
+                let suffix = document.querySelectorAll('.text-input')[1].value.trim();
+                
+                if (currentAppMode === 'extract') {
+                    addParties = document.getElementById('opt-extract-parties').checked;
+                    addPages = document.getElementById('opt-extract-pages').checked;
+                    isFullName = document.getElementById('opt-extract-full-name').checked;
+                    prefix = document.getElementById('extract-prefix').value.trim();
+                    suffix = document.getElementById('extract-suffix').value.trim();
+                }
 
                 // Рендер миниатюры
                 const thumb = document.createElement('div');
@@ -1084,7 +1374,10 @@
 
         function updateData(index, field, value) {
             if (field === 'base_name') {
-                const isFullName = document.getElementById('opt-full-name').checked;
+                let isFullName = document.getElementById('opt-full-name').checked;
+                if (currentAppMode === 'extract') {
+                    isFullName = document.getElementById('opt-extract-full-name').checked;
+                }
                 if (isFullName) previewData[index].full_name = value;
                 else previewData[index].short_name = value;
             } else {
@@ -1100,13 +1393,23 @@
         }
 
         function generateAutoName(item, index) {
-            const addParties = document.getElementById('opt-parties').checked;
-            const addPages = document.getElementById('opt-pages').checked;
-            const isFullName = document.getElementById('opt-full-name').checked;
-            const isShortName = document.getElementById('opt-short-name').checked;
-            const addNumbering = document.getElementById('opt-numbering').checked;
-            const prefix = document.querySelectorAll('.text-input')[0].value.trim();
-            const suffix = document.querySelectorAll('.text-input')[1].value.trim();
+            let addParties = document.getElementById('opt-parties').checked;
+            let addPages = document.getElementById('opt-pages').checked;
+            let isFullName = document.getElementById('opt-full-name').checked;
+            let isShortName = document.getElementById('opt-short-name').checked;
+            let addNumbering = document.getElementById('opt-numbering').checked;
+            let prefix = document.querySelectorAll('.text-input')[0].value.trim();
+            let suffix = document.querySelectorAll('.text-input')[1].value.trim();
+
+            if (currentAppMode === 'extract') {
+                addParties = document.getElementById('opt-extract-parties').checked;
+                addPages = document.getElementById('opt-extract-pages').checked;
+                isFullName = document.getElementById('opt-extract-full-name').checked;
+                isShortName = document.getElementById('opt-extract-short-name').checked;
+                addNumbering = document.getElementById('opt-extract-numbering').checked;
+                prefix = document.getElementById('extract-prefix').value.trim();
+                suffix = document.getElementById('extract-suffix').value.trim();
+            }
 
             let baseName = '';
             if (isFullName) {
@@ -1126,12 +1429,12 @@
             }
             newName += prefix + baseName;
 
-            if (item.date && (!baseName || !baseName.includes(item.date))) {
+            if (item.date && item.date !== "-" && (!baseName || !baseName.includes(item.date))) {
                 if (newName && !newName.endsWith(' ')) newName += ` `;
                 newName += item.date;
             }
             if (addPages) {
-                const pageCount = item.end_page - item.start_page + 1;
+                const pageCount = item.actual_page_count !== undefined ? item.actual_page_count : (item.end_page - item.start_page + 1);
                 newName += ` - ${pageCount} л`;
             }
             newName += suffix;
@@ -1206,6 +1509,19 @@
                 }
             }
 
+            const textPane = document.getElementById('preview-text-pane');
+            const editText = document.getElementById('previewDocEditText');
+            if (currentAppMode === 'extract' && textPane && editText) {
+                textPane.style.display = 'flex';
+                editText.value = item.text || '';
+                // Update the text in previewData when edited
+                editText.oninput = (e) => {
+                    previewData[index].text = e.target.value;
+                };
+            } else if (textPane) {
+                textPane.style.display = 'none';
+            }
+
             const modal = document.getElementById('previewModal');
             modal.style.display = 'flex';
             setTimeout(() => modal.classList.add('active'), 10);
@@ -1223,7 +1539,7 @@
 
         async function saveDocuments() {
             if (isProcessing) {
-                showErrorModal("Дождитесь завершения текущей операции!");
+                alert("Дождитесь завершения текущей операции!");
                 return;
             }
             isProcessing = true;
@@ -1249,12 +1565,18 @@
                     } else {
                         if (currentDoc && item.isActive) {
                             currentDoc.end_page = item.end_page; // Extend the end page of the parent document
+                            if (currentAppMode === 'extract' && item.text) {
+                                currentDoc.text = (currentDoc.text || '') + '\n\n' + item.text;
+                            }
                         }
                     }
                 }
                 if (currentDoc) dataToSave.push(currentDoc);
 
-                await pywebview.api.save_documents(dataToSave, outDir);
+                const exportFormats = Array.from(document.querySelectorAll('.format-checkbox:checked')).map(b => b.dataset.format);
+                if (exportFormats.length === 0) exportFormats.push('docx'); // fallback
+
+                await pywebview.api.save_documents(dataToSave, outDir, currentAppMode, exportFormats);
 
                 setTimeout(() => {
                     document.getElementById('progress-container').style.display = 'none';
@@ -1263,12 +1585,15 @@
                     document.getElementById('drop-text').innerText = "Положите грамоты сюда или нажмите для выбора";
                     document.getElementById('file-list').innerHTML = "";
                     if (window.pywebview) pywebview.api.resize_window(650, 920);
+                    isProcessing = false;
                     alert("Сохранение успешно завершено!");
                 }, 1000);
             } catch (e) {
                 alert("Ошибка сохранения: " + e);
                 document.getElementById('preview-container').style.display = 'flex';
                 document.getElementById('progress-container').style.display = 'none';
+                document.getElementById('action-btn').style.display = 'flex';
+                isProcessing = false;
             }
         }
 
@@ -1324,13 +1649,119 @@
             // Скрываем окно с анимацией
             overlay.classList.add('opacity-0');
             modal.classList.remove('scale-100');
-            modal.classList.add('scale-95');
-
             setTimeout(() => {
-                overlay.classList.add('hidden');
                 overlay.style.display = 'none';
-            }, 200); // 200мс — время анимации Tailwind
+            }, 300);
         }
+        function setLayoutEngine(engine) {
+            document.getElementById('opt-layout-engine').value = engine;
+            document.getElementById('layout-radio-' + engine).checked = true;
+            saveSettings();
+            checkLayoutEngine();
+        }
+
+        let currentlyDownloadingLayout = null;
+
+        function checkLayoutEngine() {
+            const engine = document.getElementById('opt-layout-engine').value;
+            const actionBtn = document.getElementById('action-btn');
+
+            if (engine === 'basic') {
+                actionBtn.disabled = false;
+                actionBtn.style.opacity = 1;
+                return;
+            }
+
+            if (!window.pywebview) return;
+            actionBtn.disabled = true;
+            actionBtn.style.opacity = 0.5;
+
+            pywebview.api.check_layout_engine(engine).then(exists => {
+                if (exists) {
+                    actionBtn.disabled = false;
+                    actionBtn.style.opacity = 1;
+                } else {
+                    actionBtn.disabled = true;
+                    actionBtn.style.opacity = 0.5;
+                }
+            }).catch(e => {
+                console.error("Ошибка проверки движка верстки.");
+            });
+        }
+
+        function checkAllLayoutEnginesStatus() {
+            if (!window.pywebview) return;
+            
+            ['ppstructure', 'docling'].forEach(engine => {
+                pywebview.api.check_layout_engine(engine).then(exists => {
+                    const btn = document.getElementById('btn-download-' + engine);
+                    const mark = document.getElementById(engine + '-status-mark');
+                    if (btn && mark) {
+                        if (exists) {
+                            btn.style.display = 'none';
+                            mark.style.display = 'flex';
+                            mark.style.color = 'var(--success)';
+                            mark.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Модель скачана и готова';
+                        } else {
+                            btn.style.display = 'inline-block';
+                            mark.style.display = 'none';
+                        }
+                    }
+                });
+            });
+        }
+
+        window.updateLayoutDownloadStatus = function(msg) {
+            if (currentlyDownloadingLayout) {
+                const mark = document.getElementById(currentlyDownloadingLayout + '-status-mark');
+                if (mark) {
+                    mark.style.display = 'flex';
+                    mark.style.color = 'var(--accent)';
+                    mark.innerText = msg;
+                }
+            }
+        };
+
+        function downloadLayoutEngine(engine) {
+            const btn = document.getElementById('btn-download-' + engine);
+            const mark = document.getElementById(engine + '-status-mark');
+            
+            currentlyDownloadingLayout = engine;
+            btn.style.display = 'none';
+            mark.style.display = 'flex';
+            mark.style.color = "var(--accent)";
+            mark.innerText = "Подготовка к загрузке...";
+
+            pywebview.api.download_layout_engine(engine).then(result => {
+                currentlyDownloadingLayout = null;
+                if (result === "OK" || result === true) {
+                    checkAllLayoutEnginesStatus();
+                    checkLayoutEngine();
+                } else {
+                    btn.style.display = 'inline-block';
+                    if (typeof result === 'string' && result !== "FAIL" && result !== "OK") {
+                        mark.innerText = "Ошибка: " + result;
+                    } else if (!mark.innerText.includes("Ошибка") && !mark.innerText.includes("Сбой")) {
+                        mark.innerText = "Ошибка загрузки. Попробуйте снова.";
+                    }
+                    mark.style.color = "var(--danger)";
+                }
+            }).catch(e => {
+                currentlyDownloadingLayout = null;
+                btn.style.display = 'inline-block';
+                if (!mark.innerText.includes("Ошибка") && !mark.innerText.includes("Сбой")) {
+                    mark.innerText = "Сбой соединения.";
+                }
+                mark.style.color = "var(--danger)";
+            });
+        }
+
+        // Initialize check when pywebview is ready
+        window.addEventListener('pywebviewready', () => {
+            if (currentAppMode === 'extract') {
+                checkLayoutEngine();
+            }
+        });
     </script>
 </body>
 

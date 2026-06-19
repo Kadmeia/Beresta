@@ -5,15 +5,32 @@ from .model_manager import ModelManager
 from .pdf_processor import PDFProcessor
 from .llm_handler import LLMHandler
 from .docx_processor import DocxProcessor
+from .layout_processor import LayoutProcessor
 
 class Api:
     def __init__(self):
         self.model_manager = ModelManager()
         self.pdf_processor = PDFProcessor()
         self.docx_processor = DocxProcessor()
+        self.layout_processor = LayoutProcessor()
         self.llm_handler = None
         self.window = None
         self.is_processing = False
+
+        self._load_ocr_engine()
+
+    def _load_ocr_engine(self):
+        import os, json
+        config_path = self.model_manager.config_path
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    engine = config.get("ocr_engine")
+                    if engine:
+                        self.set_ocr_engine(engine)
+            except Exception as e:
+                print(f"Error loading OCR engine from config: {e}")
 
 
     def _lock(func):
@@ -47,16 +64,17 @@ class Api:
     def open_file_dialog(self):
         import webview
         if self.window:
-            file_types = ('Документы (*.pdf;*.docx)', 'Все файлы (*.*)')
-            result = self.window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True, file_types=file_types)
+            file_types = ('Документы и сканы (*.pdf;*.docx;*.png;*.jpg;*.jpeg)', 'Все файлы (*.*)')
+            result = self.window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True, file_types=file_types)
             return result if result else []
         return []
+
     def open_folder_dialog(self):
         import webview
         if self.window:
-            result = self.window.create_file_dialog(webview.FOLDER_DIALOG)
-            return result[0] if result else None
-        return None
+            result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
+            return result[0] if result else ""
+        return ""
 
     def save_dropped_file(self, filename, base64_data):
         """Saves a dragged-and-dropped file to a temporary location and returns the path."""
@@ -122,6 +140,22 @@ class Api:
         t.start()
         return "Started"
 
+    def check_layout_engine(self, engine):
+        return self.layout_processor.check_engine(engine)
+
+    def download_layout_engine(self, engine):
+        def custom_cb(msg):
+            print(f"LAYOUT_STATUS: {msg}")
+            if self.window:
+                safe_msg = msg.replace('`', "'").replace('\\', '\\\\')
+                self.window.evaluate_js(f"window.updateLayoutDownloadStatus && window.updateLayoutDownloadStatus(`{safe_msg}`)")
+                
+        try:
+            success = self.layout_processor.download_engine(engine, custom_cb)
+            return "OK" if success else "FAIL"
+        except Exception as e:
+            return str(e)
+
     def check_model(self):
         """Called by frontend on startup. Returns true if ANY model exists."""
         active = self.model_manager.get_active_model_type()
@@ -177,7 +211,7 @@ class Api:
     def get_available_ocr_engines(self):
         """Returns available OCR engines based on OS."""
         import sys
-        engines = ['tesseract', 'paddleocr']
+        engines = ['paddleocr', 'docling', 'tesseract']
         if sys.platform == 'darwin':
             engines.append('applevision')
         return engines
@@ -189,13 +223,28 @@ class Api:
 
     def set_ocr_engine(self, engine):
         """Sets the active OCR engine."""
-        import sys
-        valid_engines = ['tesseract', 'paddleocr']
+        import sys, os, json
+        valid_engines = ['paddleocr', 'docling', 'tesseract']
         if sys.platform == 'darwin':
             valid_engines.append('applevision')
             
         if engine in valid_engines:
             self.pdf_processor.ocr_engine = engine
+            # Save to config
+            config_path = self.model_manager.config_path
+            config = {}
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                except Exception:
+                    pass
+            config["ocr_engine"] = engine
+            try:
+                with open(config_path, 'w') as f:
+                    json.dump(config, f)
+            except Exception as e:
+                print(f"Error saving OCR engine to config: {e}")
             return True
         return False
 
@@ -209,11 +258,14 @@ class Api:
         return "Started"
 
     @_lock
-    def process_files(self, file_paths, mode="split"):
+    def process_files(self, file_paths, mode="split", extract_settings=None):
         """
         Main pipeline for processing PDFs.
         Returns a list of JSON objects for the preview table.
         """
+        if extract_settings is None:
+            extract_settings = {"split": True, "use_ai": True}
+
         if not self.llm_handler:
             active = self.model_manager.get_active_model_type()
             if not self.model_manager.check_model_exists(active):
@@ -223,15 +275,19 @@ class Api:
         import re
         def is_new_document_start(text):
             lines = text[:1500].split('\n')
-            keywords = ['ДОГОВОР', 'АКТ', 'ПРИЛОЖЕНИЕ', 'СОГЛАШЕНИЕ', 'СЧЕТ', 'УПД', 'СПРАВКА', 'ДОВЕРЕННОСТЬ', 'ЗАЯВЛЕНИЕ', 'ПРИКАЗ', 'КОНТРАКТ']
+            keywords = [
+                'ДОГОВОР', 'АКТ', 'ПРИЛОЖЕНИЕ', 'СОГЛАШЕНИЕ', 'СЧЕТ', 'УПД', 
+                'СПРАВКА', 'ДОВЕРЕННОСТЬ', 'ЗАЯВЛЕНИЕ', 'ПРИКАЗ', 'КОНТРАКТ',
+                'НАКЛАДНАЯ', 'РЕШЕНИЕ', 'ЗАКЛЮЧЕНИЕ', 'ПРОТОКОЛ', 'ВЫПИСКА', 'ПАСПОРТ', 'ЧЕК'
+            ]
             
             # Создаем регулярные выражения для каждого ключевого слова
             # Разрешаем пробелы между буквами (П Р И Л О Ж Е Н И Е)
-            # Требуем, чтобы слово не было частью другого слова (например, ДОГОВОРУ)
+            # Используем \b чтобы отсекать ложные срабатывания (например ФАКТ), но допускать слипание (АКТвыполненных)
             kw_patterns = {}
             for kw in keywords:
                 spaced_kw = r'\s*'.join(list(kw))
-                pattern = r'(?:^|[^А-ЯЁA-Z])(' + spaced_kw + r')(?:[^А-ЯЁA-Z]|$)'
+                pattern = r'\b(' + spaced_kw + r')'
                 kw_patterns[kw] = re.compile(pattern)
 
             for i, line in enumerate(lines):
@@ -244,11 +300,11 @@ class Api:
                 for kw, pattern in kw_patterns.items():
                     match = pattern.search(line)
                     if match:
-                        # 1. Если строка короткая (до 8 слов) - это заголовок
-                        if word_count <= 8:
+                        # 1. Если строка короткая (до 10 слов) - это заголовок
+                        if word_count <= 10:
                             return True
                         # 2. Если ключевое слово находится в самом начале строки (с учетом нумерации "1. ")
-                        if match.start(1) <= 5 and word_count <= 20:
+                        if match.start(1) <= 15 and word_count <= 25:
                             return True
             return False
 
@@ -257,10 +313,16 @@ class Api:
             self.send_status(f"Анализируем грамоту: {os.path.basename(path)}...")
             try:
                 is_docx = path.lower().endswith('.docx')
-                if is_docx:
-                    pages_text = self.docx_processor.extract_text(path, self.send_status)
+                engine = self.pdf_processor.ocr_engine
+                
+                if engine in ['docling', 'ppstructure'] and not is_docx:
+                    self.send_status(f"Извлекаем текст и верстку ({engine})...")
+                    pages_text = self.layout_processor.extract_text(path, engine, self.send_status)
                 else:
-                    pages_text = self.pdf_processor.extract_text(path, self.send_status)
+                    if is_docx:
+                        pages_text = self.docx_processor.extract_text(path, self.send_status)
+                    else:
+                        pages_text = self.pdf_processor.extract_text(path, self.send_status)
                 
                 current_doc = None
                 
@@ -270,6 +332,8 @@ class Api:
                     
                     if mode == "rename":
                         is_new = False
+                    elif mode == "extract":
+                        is_new = extract_settings.get('split', True) and is_new_document_start(text)
                     else:
                         is_new = is_new_document_start(text)
                     
@@ -279,7 +343,15 @@ class Api:
                         
                         # Initial text cleanup for common OCR artifacts
                         text = text.replace('N@', '№').replace('N?', '№')
-                        self.send_status(f"Расшифровка нейросетью (стр. {page_num})...")
+                        
+                        if mode == "extract" and extract_settings.get("use_ai", True):
+                            self.send_status(f"ИИ коррекция текста (стр. {page_num})...")
+                            # ИИ-вычитка распознанного текста
+                            proofread_text = self.llm_handler.proofread_text(p['text'])
+                            text = proofread_text[:1500] # Обновляем превью для анализа
+                            p['text'] = proofread_text
+                        
+                        self.send_status(f"Определение реквизитов (стр. {page_num})...")
                         analysis = self.llm_handler.analyze_text(text, page_num, retry=retries)
                         
                         while (analysis.get('confidence_score', 0) < 85 or analysis.get('short_name') == 'Неизвестный документ') and retries < max_retries:
@@ -330,19 +402,27 @@ class Api:
                         current_doc = {
                             "start_page": page_num,
                             "end_page": page_num,
+                            "actual_page_count": 1,
                             "parties": analysis.get('parties', ''),
                             "short_name": analysis.get('short_name', 'Документ'),
                             "full_name": analysis.get('full_name', f'Документ со стр. {page_num}'),
                             "date": analysis.get('date', ''),
                             "confidence": final_confidence,
                             "original_file": path,
-                            "text": text,
+                            "text": p['text'],
                             "image_b64": b64_image
                         }
                     else:
                         # Продолжение документа
                         if current_doc:
                             current_doc['end_page'] = page_num
+                            current_doc['actual_page_count'] = current_doc.get('actual_page_count', 0) + 1
+                            if mode == "extract":
+                                if extract_settings.get("use_ai", True):
+                                    self.send_status(f"ИИ коррекция текста (стр. {page_num})...")
+                                    proofread_text = self.llm_handler.proofread_text(p['text'])
+                                    p['text'] = proofread_text
+                                current_doc['text'] += '\n\n' + p['text']
                             
                 # Добавляем последний документ
                 if current_doc:
@@ -356,11 +436,16 @@ class Api:
         return results
 
     @_lock
-    def save_documents(self, preview_data, output_dir):
+    def save_documents(self, preview_data, output_dir, mode="split", export_formats=None):
         """
         Takes the edited preview data from frontend and splits/saves PDFs or DOCXs.
         """
         import re
+        if export_formats is None:
+            export_formats = ["docx"]
+        elif isinstance(export_formats, str):
+            export_formats = [export_formats]
+        
         saved_files = []
         for item in preview_data:
             try:
@@ -386,7 +471,23 @@ class Api:
                 
                 self.send_status(f"Сохранение: {new_name}...")
                 
-                if original_path.lower().endswith('.docx'):
+                if mode == "extract":
+                    for fmt in export_formats:
+                        if fmt == "docx":
+                            final_path = self.docx_processor.create_docx_from_text(
+                                item.get('text', ''),
+                                new_name,
+                                current_output_dir
+                            )
+                        elif fmt == "md":
+                            final_path = os.path.join(current_output_dir, new_name.replace('.docx', '').replace('.pdf', '') + '.md')
+                            with open(final_path, 'w', encoding='utf-8') as f:
+                                f.write(item.get('text', ''))
+                        elif fmt == "txt":
+                            final_path = os.path.join(current_output_dir, new_name.replace('.docx', '').replace('.pdf', '') + '.txt')
+                            with open(final_path, 'w', encoding='utf-8') as f:
+                                f.write(item.get('text', ''))
+                elif original_path.lower().endswith('.docx'):
                     # Save docx
                     final_path = self.docx_processor.split_and_save(
                         original_path, 
@@ -406,7 +507,7 @@ class Api:
                     )
                 saved_files.append(final_path)
             except Exception as e:
-                error_msg = f"Ошибка сохранения в {current_output_dir}: {e}"
+                error_msg = f"{e}"
                 print(error_msg)
                 raise ValueError(error_msg)
                 

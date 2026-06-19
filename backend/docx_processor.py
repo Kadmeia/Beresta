@@ -126,3 +126,88 @@ class DocxProcessor:
             
         doc.save(final_path)
         return final_path
+
+    def create_docx_from_text(self, text, new_name, output_dir):
+        """
+        Creates a new docx file from plain text or Markdown text.
+        Supports Markdown headings, lists, bold text, and tables.
+        """
+        doc = docx.Document()
+        
+        lines = text.split('\n')
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if not line:
+                i += 1
+                continue
+                
+            # Check for table
+            if line.startswith('|') and line.endswith('|'):
+                table_lines = []
+                while i < len(lines) and lines[i].strip().startswith('|'):
+                    table_lines.append(lines[i].strip())
+                    i += 1
+                
+                # Parse table
+                if len(table_lines) >= 2:
+                    rows = []
+                    for t_line in table_lines:
+                        # Split by | and remove empty strings from edges
+                        cols = [c.strip() for c in t_line.split('|')[1:-1]]
+                        # Skip separator row (---)
+                        if all(all(char in '-: ' for char in c) for c in cols) and len(rows) == 1:
+                            continue
+                        rows.append(cols)
+                    
+                    if rows:
+                        num_cols = max(len(row) for row in rows)
+                        table = doc.add_table(rows=len(rows), cols=num_cols)
+                        table.style = 'Table Grid'
+                        for r_idx, row in enumerate(rows):
+                            for c_idx, cell_text in enumerate(row):
+                                if c_idx < num_cols:
+                                    cell = table.cell(r_idx, c_idx)
+                                    self._add_markdown_run(cell.paragraphs[0], cell_text)
+                continue
+                
+            # Check for headings
+            import re
+            heading_match = re.match(r'^(#{1,6})\s+(.*)', line)
+            if heading_match:
+                level = len(heading_match.group(1))
+                text_content = heading_match.group(2)
+                # python-docx has styles 'Heading 1', 'Heading 2', etc. up to 9
+                try:
+                    p = doc.add_paragraph(style=f'Heading {level}')
+                except Exception:
+                    p = doc.add_paragraph() # Fallback if style doesn't exist
+                self._add_markdown_run(p, text_content)
+                i += 1
+                continue
+                
+            # Normal paragraph
+            p = doc.add_paragraph()
+            self._add_markdown_run(p, line)
+            i += 1
+            
+        base_path = os.path.join(output_dir, new_name + ".docx")
+        final_path = base_path
+        
+        counter = 1
+        while os.path.exists(final_path):
+            final_path = os.path.join(output_dir, f"{new_name} ({counter}).docx")
+            counter += 1
+            
+        doc.save(final_path)
+        return final_path
+
+    def _add_markdown_run(self, paragraph, text):
+        import re
+        # Basic inline bold **text**
+        parts = re.split(r'(\*\*.*?\*\*)', text)
+        for part in parts:
+            if part.startswith('**') and part.endswith('**'):
+                paragraph.add_run(part[2:-2]).bold = True
+            else:
+                paragraph.add_run(part)
