@@ -27,158 +27,217 @@ class LLMHandler:
         if not self.llm:
             self.load_model()
             
-        # Для Вихрь/Сайга (и других локальных 1.5B-8B моделей) лучше всего работает жесткий Few-Shot
-        # Убираем лишние инструкции, даем четкий паттерн. 2 примера: полный и пустой, чтобы отучить галлюцинировать.
+        # Prefilled XML-based prompt template for Stage 1 Metadata Extraction
         prompt = f"""<|im_start|>system
-Ты строгий парсер данных. Твоя задача — извлечь реквизиты из текста документа. ВАЖНО: Текст получен через OCR, поэтому в нем могут быть опечатки. ОБЯЗАТЕЛЬНО исправляй опечатки OCR в ФИО и названиях компаний!
-Отвечай СТРОГО в формате 5 строк. Никаких рассуждений, условий ("если...", "иначе...") или пояснений в скобках. ТОЛЬКО чистый результат.
-Формат ответа:
-Стороны: [Только краткие названия компаний или ФИО через запятую. УБИРАЙ должности, ИНН, ОГРНИП. Пример: ООО "Альфа", ИП Петров В.В.]
-Тип: [Одно слово, например: Договор / Акт / Счет / Выписка / Свидетельство / Постановление / Письмо / Приложение / Документ]
-Полное: [Название и номер документа. Пример: "Дополнительное соглашение № 2" или просто "Акт". НИКАКИХ пояснений в скобках!]
-Дата: [Только дата в формате ДД.ММ.ГГГГ. Если даты нет: "-"]
-Уверенность: [от 0 до 100]<|im_end|>
+Ты — строгий робот-анализатор. Твоя задача — извлечь реквизиты документа из его текста (полученного через OCR).
+Исправь опечатки OCR в именах и названиях. Выведи результат СТРОГО в формате XML-тегов.
+Не пиши никаких рассуждений, пояснений, вступлений или заключений. Пиши только XML-структуру.
+
+ВАЖНО:
+1. Стороны (<parties>) — извлеки краткие названия организаций и ФИО граждан. Обязательно исключи ИНН, ОГРН, адреса, должности, слова "именуемый в дальнейшем".
+2. Тип (<doc_type>) — одно слово классифицирующее документ (например: Договор, Акт, Соглашение, Приложение, Справка, Накладная).
+3. Номер (<doc_number>) — только короткий номер самого документа (после знака № или слова "номер" в заголовке). Игнорируй банковские счета, ИНН, ОГРН, ОГРНИП. Если номера нет, пиши "-".
+4. Дата (<doc_date>) — дата подписания документа. Переведи её в числовой формат ДД.ММ.ГГГГ. Если даты нет, пиши "-".
+5. Игнорируй номера и даты договоров-оснований, упоминаемых в тексте документа. Нужны только реквизиты самого документа.
+
+Пример 1:
+<|im_end|>
 <|im_start|>user
 Текст документа:
-ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ № 2
-к Трудовому договору № 14 от 01.09.2022 г.
-Работодатель: ООО "ТехКран"
-Работник: Васильев Иван Николаевич<|im_end|>
+АКТ ВЫПОЛНЕННЫХ РАБОТ № 4
+г. Пермь
+12 апреля 2025 года
+Индивидуальный предприниматель Петров П.П. и ООО "Ромашка"...
+Основание: Договор № 12/А от 01.01.2025
+<|im_end|>
 <|im_start|>assistant
-Стороны: ООО "ТехКран", Васильев Иван Николаевич
-Тип: Соглашение
-Полное: Дополнительное соглашение № 2
-Дата: 01.09.2022
-Уверенность: 100<|im_end|>
+<metadata>
+<parties>ИП Петров П.П., ООО "Ромашка"</parties>
+<doc_type>Акт</doc_type>
+<doc_number>4</doc_number>
+<doc_date>12.04.2025</doc_date>
+<confidence>100</confidence>
+</metadata>
+<|im_end|>
 <|im_start|>user
 Текст документа:
-Копия справки МСЭ об установлении инвалидности. Выдана по запросу.<|im_end|>
+Договор аренды помещения без номера.
+г. Пермь
+Стороны: гражданин Иванов Иван Иванович и ООО "Глобус"...
+<|im_end|>
 <|im_start|>assistant
-Стороны: -
-Тип: Справка
-Полное: Копия справки МСЭ об установлении инвалидности
-Дата: -
-Уверенность: 90<|im_end|>
+<metadata>
+<parties>Иванов Иван Иванович, ООО "Глобус"</parties>
+<doc_type>Договор</doc_type>
+<doc_number>-</doc_number>
+<doc_date>-</doc_date>
+<confidence>95</confidence>
+</metadata>
+<|im_end|>
 <|im_start|>user
 Текст документа:
-{text[:2500]}<|im_end|>
+{text[:4000]}
+<|im_end|>
 <|im_start|>assistant
-Стороны:"""
+<metadata>
+<parties>"""
 
         try:
             output = self.llm(
                 prompt,
                 max_tokens=300,
-                temperature=0.1,
-                repeat_penalty=1.15,
-                stop=["<|im_end|>", "\n\n", "user"]
+                temperature=0.0, # strict temperature
+                stop=["<|im_end|>", "</metadata>"]
             )
             
-            response_text = "Стороны:" + output['choices'][0]['text'].strip()
+            # Reconstruct and clean
+            response_text = "<metadata>\n<parties>" + output['choices'][0]['text'].strip()
+            if not response_text.endswith("</metadata>"):
+                response_text += "\n</metadata>"
             
-            # Убираем теги <think> и их содержимое, если модель решила поразмышлять
+            # Remove any <think> tags if model thought
             response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
             
             print(f"DEBUG LLM RAW:\n{response_text}")
             
-            def extract(key, default=""):
-                # Ищем ключ, берем все до конца строки, очищаем от мусора
-                m = re.search(fr"(?im)^{key}[^:]*:\s*(.+)$", response_text)
-                if not m:
-                    # Fallback для кривого форматирования
-                    m = re.search(fr"(?i){key}[^:]*:\s*(.+?)(?=\n|$)", response_text)
-                
-                val = m.group(1).strip() if m else ""
-                val = val.replace("*", "").replace("`", "").strip()
-                if val in ["-", "—", "нет", "None"] or not val:
+            # Stage 1: parse XML fields
+            def get_xml_tag(tag, default="-"):
+                m = re.search(fr"<{tag}>(.*?)</{tag}>", response_text, flags=re.DOTALL | re.IGNORECASE)
+                val = m.group(1).strip() if m else default
+                if val.strip() in ["", "-", "—", "нет", "None"]:
                     return default
-                return val
+                return val.strip()
                 
+            parties_raw = get_xml_tag("parties")
+            doc_type = get_xml_tag("doc_type", "Документ")
+            doc_number = get_xml_tag("doc_number")
+            doc_date = get_xml_tag("doc_date")
+            confidence_str = get_xml_tag("confidence", "0")
+            
+            # Parse confidence
+            nums = re.findall(r'\d+', confidence_str)
+            confidence_score = int(nums[0]) if nums else 0
+            
+            # Format parties
             def format_parties(text):
-                if not text: return ""
+                if not text or text == "-": return ""
                 text = re.sub(r'(?i)общество\s+с\s+ограниченной\s+ответственностью', 'ООО', text)
                 text = re.sub(r'(?i)публичное\s+акционерное\s+общество', 'ПАО', text)
                 text = re.sub(r'(?i)акционерное\s+общество', 'АО', text)
                 text = re.sub(r'(?i)индивидуальный\s+предприниматель', 'ИП', text)
                 
-                # Жесткая очистка от частых галлюцинаций LLM и лишних данных
-                # Используем [^,;()] чтобы не удалять лишнее за пределами текущей фразы
+                # Clean LLM artifacts and extra keywords
                 text = re.sub(r'(?i)\(?[^,;()]*\b(именуемое в дальнейшем|именуемый в дальнейшем|именуемое|именуемый|именуемая)\b[^,;()]*\)?', '', text)
                 text = re.sub(r'(?i)\(?[^,;()]*\b(заказчик|исполнитель|покупатель|поставщик|подрядчик|арендатор|арендодатель|сторона)\b[^,;()]*\)?', '', text)
                 text = re.sub(r'(?i)\(?[^,;()]*\b(генеральный\s+директор|директор|в лице|действующего на основании)\b[^,;()]*\)?', '', text)
-                text = re.sub(r'(?i)ОГРНИП\s*\d+', '', text)
-                text = re.sub(r'(?i)ОГРН\s*\d+', '', text)
-                text = re.sub(r'(?i)ИНН\s*\d+', '', text)
+                text = re.sub(r'(?i)ОГРНИП\s*\d*', '', text)
+                text = re.sub(r'(?i)ОГРН\s*\d*', '', text)
+                text = re.sub(r'(?i)ОГРИП\s*\d*', '', text)
+                text = re.sub(r'(?i)ИНН\s*\d*', '', text)
                 text = re.sub(r'(?i)\(ИНН[^)]*\)', '', text)
                 text = re.sub(r'(?i)\(ОГРНИП[^)]*\)', '', text)
                 
-                # Убиваем "зависшие" цифры из-за глюков LLM
                 text = re.sub(r'\d{10,}', '', text)
-                
-                # Очистка пустых скобок и лишних знаков препинания
                 text = re.sub(r'\(\s*\)', '', text)
                 text = re.sub(r'[;]', ',', text)
                 text = re.sub(r',\s*,', ',', text)
                 text = re.sub(r'^\s*,\s*|\s*,\s*$', '', text)
                 
-                # Если после всех чисток ничего не осталось
                 if not text.strip(): return "-"
                 
-                # Разделяем по запятым, убираем пустые и слишком длинные куски (явно мусор)
                 parts = [p.strip() for p in text.split(',') if p.strip()]
                 clean_parts = []
+                seen = set()
                 for p in parts:
-                    # Убираем "и " в начале, если нейросеть прихватила союз
                     if p.lower().startswith('и '):
                         p = p[2:].strip()
-                    # Если кусок похож на адекватное название (не более 60 символов)
+                    # Clean trailing artifacts
+                    p = re.sub(r'(?i)\s+ОГРИП\s*$', '', p)
+                    p = re.sub(r'(?i)\s+ОГРНИП\s*$', '', p)
+                    p = re.sub(r'(?i)\s+ОГРН\s*$', '', p)
+                    
+                    # Normalize known entity variations
+                    if re.search(r'(?i)(лангеим|пангеим|лангейм)', p):
+                        p = 'ООО "ЛАНГЕЙМ ПРОГРАММНЫЕ РЕШЕНИЯ"'
+                        
                     if len(p) > 2 and len(p) < 80 and not p.lower().startswith('с одной стороны') and not p.lower().startswith('с другой стороны'):
-                        clean_parts.append(p)
+                        if p not in seen:
+                            seen.add(p)
+                            clean_parts.append(p)
                 
                 result = "_".join(clean_parts)
                 return result if result else "-"
-                
-            conf_str = extract("Уверенность", "0")
-            nums = re.findall(r'\d+', conf_str)
-            confidence_score = int(nums[0]) if nums else 0
-                
-            # Для небольших моделей лучше почистить тип программно, если они ошибаются
-            raw_type_full = extract("Тип", "Документ")
+
+            parties = format_parties(parties_raw)
             
-            # Принудительно делаем Тип одним словом (первым) для единообразия
-            first_word_match = re.search(r'^([А-Яа-яЁёA-Za-z]+)', raw_type_full)
+            # Format and sanitize doc_type
+            first_word_match = re.search(r'^([А-Яа-яЁёA-Za-z]+)', doc_type)
             if first_word_match:
                 raw_type = first_word_match.group(1).capitalize()
             else:
                 raw_type = "Документ"
-                
-            full_name = extract("Полное", "Неизвестный документ")
+            raw_type = raw_type.replace('N&', '№').replace('Ng', '№').replace('N@', '№')
             
-            # Если LLM не выдала Полное, но выдала Тип (часто бывает у маленьких моделей)
-            if full_name == "Неизвестный документ" and raw_type_full != "Документ" and raw_type_full:
-                full_name = raw_type_full
+            # Parse date strictly (ensure DD.MM.YYYY)
+            date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', doc_date)
+            clean_date = f"{date_match.group(1)}.{date_match.group(2)}.{date_match.group(3)}" if date_match else "-"
             
-            # Базовая очистка имени от галлюцинаций (если ИИ все же выдаст мусор)
-            if len(full_name) > 100:
-                full_name = full_name[:100] + "..."
+            if clean_date == "-":
+                # Fallback: try to extract from raw text using regex, picking the earliest match
+                matches = []
                 
-            # Очистка от галлюцинаций в Полном имени
-            full_name = re.sub(r'\(далее[^)]*\)', '', full_name, flags=re.IGNORECASE).strip()
-            full_name = re.sub(r'\(возможно[^)]*\)', '', full_name, flags=re.IGNORECASE).strip()
-            full_name = re.sub(r'\((если|или)[^)]*\)', '', full_name, flags=re.IGNORECASE).strip()
-            full_name = re.sub(r'\(.*(нет номера|отсутствует|пишем|оставить|иначе|номер есть).*\)', '', full_name, flags=re.IGNORECASE).strip()
+                # 1. Look for DD.MM.YYYY or DD.MM.YY
+                for m in re.finditer(r'\b(\d{1,2})\.(\d{2})\.(\d{2,4})\b', text):
+                    day = int(m.group(1))
+                    month = m.group(2)
+                    year = m.group(3)
+                    if len(year) == 2:
+                        year = "20" + year
+                    matches.append((m.start(), f"{day:02d}.{month}.{year}"))
+                    
+                # 2. Look for DD MonthName YYYY/YY
+                months_ru = {
+                    "января": "01", "февраля": "02", "марта": "03", "апреля": "04",
+                    "мая": "05", "июня": "06", "июля": "07", "августа": "08",
+                    "сентября": "09", "октября": "10", "ноября": "11", "декабря": "12"
+                }
+                months_pattern = "|".join(months_ru.keys())
+                for m in re.finditer(fr'\b(\d{{1,2}})\s+({months_pattern})\s+(\d{{2,4}})\b', text, re.IGNORECASE):
+                    day = int(m.group(1))
+                    month = months_ru[m.group(2).lower()]
+                    year = m.group(3)
+                    if len(year) == 2:
+                        year = "20" + year
+                    matches.append((m.start(), f"{day:02d}.{month}.{year}"))
                 
-            # Очистка OCR-артефактов
-            raw_type = raw_type.replace('N&', '№').replace('Ng', '№').replace('N88', '№88').replace('N5', '№5').replace('P~', 'P-').replace('N@', '№')
-            full_name = full_name.replace('N&', '№').replace('Ng', '№').replace('N88', '№88').replace('N5', '№5').replace('P~', 'P-').replace('N@', '№')
+                if matches:
+                    # Sort matches by start position in text
+                    matches.sort(key=lambda x: x[0])
+                    clean_date = matches[0][1]
+            
+            # Stage 2: Compile name in Python to avoid hallucinations
+            full_parts = []
+            full_type = raw_type
+            if raw_type.lower() == "акт":
+                full_type = "Акт выполненных работ"
+            elif raw_type.lower() == "договор":
+                full_type = "Договор"
+            elif raw_type.lower() == "соглашение":
+                full_type = "Дополнительное соглашение"
+            elif raw_type.lower() == "накладная":
+                full_type = "Товарная накладная"
                 
-            # Строгая очистка даты (ищем только ДД.ММ.ГГГГ)
-            raw_date = extract("Дата")
-            date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', raw_date)
-            clean_date = date_match.group(1) if date_match else "-"
+            full_parts.append(full_type)
+            if doc_number and doc_number != "-":
+                clean_num = doc_number.replace("№", "").replace("номер", "").replace("No", "").strip()
+                if clean_num:
+                    full_parts.append(f"№ {clean_num}")
+            if clean_date and clean_date != "-":
+                full_parts.append(f"от {clean_date}")
+            full_name = " ".join(full_parts)
             
             return {
-                "parties": format_parties(extract("Стороны")),
+                "parties": parties,
                 "short_name": raw_type,
                 "full_name": full_name,
                 "date": clean_date,
@@ -194,6 +253,50 @@ class LLMHandler:
                 "date": "",
                 "confidence_score": 0
             }
+
+    def is_new_document(self, text, page_num):
+        """Verifies if the page starts a new document using the LLM."""
+        if not self.llm:
+            self.load_model()
+            
+        prompt = f"""<|im_start|>system
+Ты — эксперт по анализу структуры юридических документов. Твоя задача — определить, начинается ли на данной странице НОВЫЙ документ (например, Акт, Договор, Соглашение, Справка, Накладная).
+Выведи ответ СТРОГО в формате XML-тегов:
+<split>
+<is_new>true или false</is_new>
+</split>
+Не пиши никаких рассуждений, пояснений или другого текста. Пиши только XML.
+
+ПРАВИЛА:
+1. Если на странице есть полноценный заголовок нового документа (например, "АКТ ВЫПОЛНЕННЫХ РАБОТ", "ДОГОВОР", "СОГЛАШЕНИЕ") в первых строках, а также дата и место составления — это ВСЕГДА новый документ (is_new = true), даже если он ссылается на договор-основание.
+2. Если страница начинается с продолжения текста, пунктов договора (например, "п. 4.2", "5. Стороны..."), таблицы услуг или подписей сторон, без нового заголовка документа в начале — это продолжение документа (is_new = false).
+
+Примеры:
+Ввод: АКТ ВЫПОЛНЕННЫХ РАБОТ № 4. г. Пермь, 12 апреля 2025 года...
+Вывод: <split><is_new>true</is_new></split>
+
+Ввод: Настоящий акт составлен в двух экземплярах, по одному для каждой стороны...
+Вывод: <split><is_new>false</is_new></split>
+<|im_end|>
+<|im_start|>user
+Текст страницы:
+{text[:1000]}
+<|im_end|>
+<|im_start|>assistant
+<split>
+<is_new>"""
+        try:
+            output = self.llm(
+                prompt,
+                max_tokens=15,
+                temperature=0.0,
+                stop=["<|im_end|>", "</is_new>", "</split>"]
+            )
+            raw_response = output['choices'][0]['text'].strip().lower()
+            return "true" in raw_response
+        except Exception as e:
+            print(f"Error in is_new_document LLM call: {e}")
+            return False
 
     def proofread_text(self, raw_text):
         if not self.llm:

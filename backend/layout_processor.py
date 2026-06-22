@@ -243,3 +243,18 @@ class LayoutProcessor:
             return self.extract_with_ppstructure(file_path, status_callback)
         else:
             raise ValueError(f"Unknown layout engine: {engine}")
+
+    def unload_engine(self):
+        self.docling_converter = None
+        self.pp_structure = None
+        import gc
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                torch.mps.empty_cache()
+        except ImportError:
+            pass
+

@@ -266,6 +266,39 @@ class Api:
         if extract_settings is None:
             extract_settings = {"split": True, "use_ai": True}
 
+        # Step 1: Run OCR/text extraction on all files and save page texts in memory
+        all_files_pages = []
+        for path in file_paths:
+            self.send_status(f"Извлекаем текст: {os.path.basename(path)}...")
+            try:
+                is_docx = path.lower().endswith('.docx')
+                engine = self.pdf_processor.ocr_engine
+                
+                if engine in ['docling', 'ppstructure'] and not is_docx:
+                    pages_text = self.layout_processor.extract_text(path, engine, self.send_status)
+                else:
+                    if is_docx:
+                        pages_text = self.docx_processor.extract_text(path, self.send_status)
+                    else:
+                        pages_text = self.pdf_processor.extract_text(path, self.send_status)
+                        
+                all_files_pages.append({
+                    "path": path,
+                    "is_docx": is_docx,
+                    "pages_text": pages_text
+                })
+            except Exception as e:
+                self.send_status(f"Ошибка извлечения текста {os.path.basename(path)}: {e}")
+                
+        # Step 2: Unload OCR models from RAM
+        self.send_status("Освобождаем память от OCR движка...")
+        try:
+            self.pdf_processor.unload_ocr()
+            self.layout_processor.unload_engine()
+        except Exception as e:
+            print(f"Error unloading OCR: {e}")
+
+        # Step 3: Run LLM-based analysis page-by-page
         if not self.llm_handler:
             active = self.model_manager.get_active_model_type()
             if not self.model_manager.check_model_exists(active):
@@ -281,9 +314,6 @@ class Api:
                 'НАКЛАДНАЯ', 'РЕШЕНИЕ', 'ЗАКЛЮЧЕНИЕ', 'ПРОТОКОЛ', 'ВЫПИСКА', 'ПАСПОРТ', 'ЧЕК'
             ]
             
-            # Создаем регулярные выражения для каждого ключевого слова
-            # Разрешаем пробелы между буквами (П Р И Л О Ж Е Н И Е)
-            # Используем \b чтобы отсекать ложные срабатывания (например ФАКТ), но допускать слипание (АКТвыполненных)
             kw_patterns = {}
             for kw in keywords:
                 spaced_kw = r'\s*'.join(list(kw))
@@ -300,81 +330,70 @@ class Api:
                 for kw, pattern in kw_patterns.items():
                     match = pattern.search(line)
                     if match:
-                        # 1. Если строка короткая (до 10 слов) - это заголовок
                         if word_count <= 10:
                             return True
-                        # 2. Если ключевое слово находится в самом начале строки (с учетом нумерации "1. ")
                         if match.start(1) <= 15 and word_count <= 25:
                             return True
             return False
 
         results = []
-        for path in file_paths:
+        for file_data in all_files_pages:
+            path = file_data["path"]
+            is_docx = file_data["is_docx"]
+            pages_text = file_data["pages_text"]
+            
             self.send_status(f"Анализируем грамоту: {os.path.basename(path)}...")
             try:
-                is_docx = path.lower().endswith('.docx')
-                engine = self.pdf_processor.ocr_engine
-                
-                if engine in ['docling', 'ppstructure'] and not is_docx:
-                    self.send_status(f"Извлекаем текст и верстку ({engine})...")
-                    pages_text = self.layout_processor.extract_text(path, engine, self.send_status)
-                else:
-                    if is_docx:
-                        pages_text = self.docx_processor.extract_text(path, self.send_status)
-                    else:
-                        pages_text = self.pdf_processor.extract_text(path, self.send_status)
-                
                 current_doc = None
                 
                 for p in pages_text:
                     page_num = p['page_num']
-                    text = p['text'][:1500]
+                    text = p['text'][:3000]
                     
                     if mode == "rename":
                         is_new = False
                     elif mode == "extract":
-                        is_new = extract_settings.get('split', True) and is_new_document_start(text)
+                        is_candidate = extract_settings.get('split', True) and is_new_document_start(text)
+                        is_new = is_candidate and self.llm_handler.is_new_document(text, page_num)
                     else:
-                        is_new = is_new_document_start(text)
+                        is_candidate = is_new_document_start(text)
+                        is_new = is_candidate and self.llm_handler.is_new_document(text, page_num)
+                    
+                    print(f"DEBUG PIPELINE: page_num={page_num}, is_candidate={is_candidate}, is_new={is_new}, text_start={repr(text[:200])}")
                     
                     if is_new or current_doc is None:
                         retries = 0
                         max_retries = 2
                         
-                        # Initial text cleanup for common OCR artifacts
                         text = text.replace('N@', '№').replace('N?', '№')
                         
                         if mode == "extract" and extract_settings.get("use_ai", True):
                             self.send_status(f"ИИ коррекция текста (стр. {page_num})...")
-                            # ИИ-вычитка распознанного текста
                             proofread_text = self.llm_handler.proofread_text(p['text'])
-                            text = proofread_text[:1500] # Обновляем превью для анализа
+                            text = proofread_text[:3000]
                             p['text'] = proofread_text
                         
                         self.send_status(f"Определение реквизитов (стр. {page_num})...")
                         analysis = self.llm_handler.analyze_text(text, page_num, retry=retries)
                         
-                        while (analysis.get('confidence_score', 0) < 85 or analysis.get('short_name') == 'Неизвестный документ') and retries < max_retries:
+                        while (analysis.get('confidence_score', 0) < 85 or analysis.get('short_name') == 'Документ') and retries < max_retries:
                             retries += 1
                             self.send_status(f"Перепроверка ИИ (стр. {page_num}), попытка {retries}...")
                             
-                            # Если первая попытка провалилась, возможно текстовый слой PDF содержит мусор (частая проблема сканов).
-                            # Принудительно запускаем визуальный OCR для этой страницы.
                             if retries == 1:
                                 self.send_status(f"Очистка текста OCR (стр. {page_num})...")
                                 try:
                                     ocr_text = self.pdf_processor.force_ocr_page(path, page_num)
-                                    # Заменяем мусорный текст на распознанный
                                     if len(ocr_text.strip()) > 20:
-                                        # Fix common OCR artifacts
                                         ocr_text = ocr_text.replace('N@', '№').replace('N?', '№')
-                                        text = ocr_text[:1500]
+                                        text = ocr_text[:3000]
                                         p['text'] = ocr_text
+                                    else:
+                                        print("Force OCR returned empty/short text, keeping original text")
                                 except Exception as e:
                                     print(f"Force OCR failed: {e}")
                             
-                            expanded_text = p['text'][:1500 + (retries * 500)]
-                            # Fix common OCR artifacts before LLM
+                            expanded_text = p['text'][:3000 + (retries * 500)]
                             expanded_text = expanded_text.replace('N@', '№').replace('N?', '№')
                             analysis = self.llm_handler.analyze_text(expanded_text, page_num, retry=retries)
 
@@ -392,12 +411,10 @@ class Api:
                             except Exception as e:
                                 print(f"Error generating preview image: {e}")
 
-                        # Закрываем предыдущий документ
                         if current_doc:
                             current_doc['end_page'] = page_num - 1
                             results.append(current_doc)
                             
-                        # Начинаем новый документ
                         final_confidence = analysis.get('confidence_score', 0) >= 85
                         current_doc = {
                             "start_page": page_num,
@@ -413,7 +430,6 @@ class Api:
                             "image_b64": b64_image
                         }
                     else:
-                        # Продолжение документа
                         if current_doc:
                             current_doc['end_page'] = page_num
                             current_doc['actual_page_count'] = current_doc.get('actual_page_count', 0) + 1
@@ -424,7 +440,6 @@ class Api:
                                     p['text'] = proofread_text
                                 current_doc['text'] += '\n\n' + p['text']
                             
-                # Добавляем последний документ
                 if current_doc:
                     current_doc['end_page'] = pages_text[-1]['page_num'] if pages_text else current_doc['end_page']
                     results.append(current_doc)

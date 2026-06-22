@@ -406,3 +406,9 @@ class PDFProcessor:
             if progress_callback:
                 progress_callback(f"Ошибка установки OCR: {str(e)}")
             return False
+
+    def unload_ocr(self):
+        self.paddle_ocr = None
+        import gc
+        gc.collect()
+

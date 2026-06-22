@@ -384,7 +384,7 @@
                         требования к ПК (от 2.5 ГБ ОЗУ). Специально адаптирована под русский язык. Работает очень быстро
                         и логично.</p>
                     <div id="model-actions-fast"
-                        style="margin-top: 12px; display: flex; gap: 8px; align-items: center; min-height: 32px;"></div>
+                        style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
                 </div>
 
                 <div id="model-card-accurate"
@@ -397,7 +397,7 @@
                     <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Идеальное
                         следование правилам и иерархии, высочайшее качество. <b>Требует от 2.5 ГБ ОЗУ</b>, отличный баланс скорости и ума.</p>
                     <div id="model-actions-accurate"
-                        style="margin-top: 12px; display: flex; gap: 8px; align-items: center; min-height: 32px;"></div>
+                        style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
                 </div>
             </div>
         </div>
@@ -945,8 +945,8 @@
                         card.style.borderColor = 'var(--border-color)';
                         card.style.background = 'var(--container-bg)';
                         actionsDiv.innerHTML = `
-                            <button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px;" onclick="setActiveModel('${mType}')">Сделать активной</button>
-                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444; border-radius: 6px;" onclick="doDeleteModel('${mType}')">Удалить</button>
+                            <button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; flex: 1;" onclick="setActiveModel('${mType}')">Сделать активной</button>
+                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444; border-radius: 6px; flex: 1;" onclick="doDeleteModel('${mType}')">Удалить</button>
                         `;
                     } else {
                         card.style.borderColor = 'var(--border-color)';
