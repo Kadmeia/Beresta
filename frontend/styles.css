@@ -119,6 +119,17 @@
             color: var(--accent);
         }
 
+        .app-version {
+            font-size: 0.6rem;
+            color: #000000;
+            margin-left: 6px;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .app-version {
+            color: #ffffff;
+        }
+
         .theme-segmented-control {
             display: flex;
             background-color: var(--theme-switch-bg);

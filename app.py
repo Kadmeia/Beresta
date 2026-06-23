@@ -20,7 +20,7 @@ def main():
             
     # Create window
     window = webview.create_window(
-        title='Береста.ИИ', 
+        title='Береста.ИИ v1.0', 
         url=f'file://{html_path}', 
         js_api=api,
         width=650,
@@ -31,8 +31,13 @@ def main():
     
     api.set_window(window)
     
-    # Start webview loop
-    webview.start()
+    # Start webview loop with persistent storage
+    local_app_data = os.getenv('LOCALAPPDATA', os.path.expanduser('~'))
+    model_dir = os.path.join(local_app_data, 'BerestaAI')
+    storage_path = os.path.join(model_dir, 'web_storage')
+    os.makedirs(storage_path, exist_ok=True)
+    
+    webview.start(private_mode=False, storage_path=storage_path)
 
 if __name__ == '__main__':
     main()

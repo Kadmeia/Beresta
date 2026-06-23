@@ -104,9 +104,11 @@ class LLMHandler:
             def get_xml_tag(tag, default="-"):
                 m = re.search(fr"<{tag}>(.*?)</{tag}>", response_text, flags=re.DOTALL | re.IGNORECASE)
                 val = m.group(1).strip() if m else default
-                if val.strip() in ["", "-", "—", "нет", "None"]:
+                val_clean = val.strip()
+                # Игнорируем различные плейсхолдеры и мусорные значения, которые может вернуть ИИ
+                if val_clean.lower() in ["", "-", "—", "нет", "none", "null", "б/н", "б/д"]:
                     return default
-                return val.strip()
+                return val_clean
                 
             parties_raw = get_xml_tag("parties")
             doc_type = get_xml_tag("doc_type", "Документ")
@@ -156,9 +158,8 @@ class LLMHandler:
                     p = re.sub(r'(?i)\s+ОГРНИП\s*$', '', p)
                     p = re.sub(r'(?i)\s+ОГРН\s*$', '', p)
                     
-                    # Normalize known entity variations
-                    if re.search(r'(?i)(лангеим|пангеим|лангейм)', p):
-                        p = 'ООО "ЛАНГЕЙМ ПРОГРАММНЫЕ РЕШЕНИЯ"'
+                    # Normalize known entity variations (removed hardcoded examples)
+
                         
                     if len(p) > 2 and len(p) < 80 and not p.lower().startswith('с одной стороны') and not p.lower().startswith('с другой стороны'):
                         if p not in seen:
@@ -231,7 +232,7 @@ class LLMHandler:
             if doc_number and doc_number != "-":
                 clean_num = doc_number.replace("№", "").replace("номер", "").replace("No", "").strip()
                 if clean_num:
-                    full_parts.append(f"№ {clean_num}")
+                    full_parts.append(f"№{clean_num}")
             if clean_date and clean_date != "-":
                 full_parts.append(f"от {clean_date}")
             full_name = " ".join(full_parts)
@@ -259,6 +260,16 @@ class LLMHandler:
         if not self.llm:
             self.load_model()
             
+        # Clean text for split decision to match examples and simplify for small LLM
+        clean_text = text[:2000]
+        # Remove markdown headers
+        clean_text = re.sub(r'#+\s*', '', clean_text)
+        # Remove markdown table lines
+        clean_text = re.sub(r'\|', ' ', clean_text)
+        clean_text = re.sub(r'[-:]{3,}', ' ', clean_text)
+        # Normalize spaces and newlines
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+            
         prompt = f"""<|im_start|>system
 Ты — эксперт по анализу структуры юридических документов. Твоя задача — определить, начинается ли на данной странице НОВЫЙ документ (например, Акт, Договор, Соглашение, Справка, Накладная).
 Выведи ответ СТРОГО в формате XML-тегов:
@@ -268,32 +279,43 @@ class LLMHandler:
 Не пиши никаких рассуждений, пояснений или другого текста. Пиши только XML.
 
 ПРАВИЛА:
-1. Если на странице есть полноценный заголовок нового документа (например, "АКТ ВЫПОЛНЕННЫХ РАБОТ", "ДОГОВОР", "СОГЛАШЕНИЕ") в первых строках, а также дата и место составления — это ВСЕГДА новый документ (is_new = true), даже если он ссылается на договор-основание.
-2. Если страница начинается с продолжения текста, пунктов договора (например, "п. 4.2", "5. Стороны..."), таблицы услуг или подписей сторон, без нового заголовка документа в начале — это продолжение документа (is_new = false).
+1. Если на странице есть полноценный заголовок нового документа (например, "АКТ ВЫПОЛНЕННЫХ РАБОТ", "ДОГОВОР", "СОГЛАШЕНИЕ") в первых строках, а также дата и место составления — это ВСЕГДА новый документ (is_new = true).
+2. Если страница начинается с продолжения текста предыдущего документа (например, с середины предложения, пунктов вроде "п. 4.2", "5. Права сторон", таблицы услуг или подписей) без нового заголовка в самом начале — это продолжение документа (is_new = false).
+3. Если страница начинается с указания места (например, "г. Москва") и даты (например, "31 июля 2025г."), после чего идет название организации — это ВСЕГДА новый документ (is_new = true), даже если заголовок был пропущен при распознавании (OCR).
+4. Если на странице есть заголовок нового документа (например, "АКТ ВЫПОЛНЕННЫХ РАБОТ", "ДОГОВОР") и либо место составления (например, "г. Москва"), либо дата составления (например, "30 ноября 2023 г."), после чего идет название организации — это ВСЕГДА новый документ (is_new = true).
+5. Если на странице в самом начале есть заголовок нового документа (например, "АКТ ВЫПОЛНЕННЫХ РАБОТ"), дата, место и стороны, то это новый документ (is_new = true), даже если на этой же странице есть подписи или таблицы (одностраничный документ).
 
 Примеры:
-Ввод: АКТ ВЫПОЛНЕННЫХ РАБОТ № 4. г. Пермь, 12 апреля 2025 года...
+Ввод: АКТ ВЫПОЛНЕННЫХ РАБОТ № 4. г. Пермь, 12 апреля 2025 года. ООО "Ромашка" и ИП Петров...
 Вывод: <split><is_new>true</is_new></split>
 
-Ввод: Настоящий акт составлен в двух экземплярах, по одному для каждой стороны...
+Ввод: г. Москва. 31 марта 2025г. Общество с ограниченной ответственностью "ТехноПром" и ИП Лаврентьев...
+Вывод: <split><is_new>true</is_new></split>
+
+Ввод: Акт Nº от 30 ноября 2023 г. ИП Лаврентьев Александр Владимирович, ИНН 590299825983...
+Вывод: <split><is_new>true</is_new></split>
+
+Ввод: Настоящий акт составлен в двух экземплярах, по одному для каждой стороны. Подписи сторон: Заказчик...
 Вывод: <split><is_new>false</is_new></split>
 <|im_end|>
 <|im_start|>user
 Текст страницы:
-{text[:1000]}
+{clean_text[:1500]}
 <|im_end|>
 <|im_start|>assistant
-<split>
-<is_new>"""
+"""
         try:
             output = self.llm(
                 prompt,
-                max_tokens=15,
+                max_tokens=300,
                 temperature=0.0,
-                stop=["<|im_end|>", "</is_new>", "</split>"]
+                stop=["<|im_end|>", "</split>"]
             )
-            raw_response = output['choices'][0]['text'].strip().lower()
-            return "true" in raw_response
+            raw_response = output['choices'][0]['text']
+            if not raw_response.endswith("</split>") and "</split>" not in raw_response:
+                raw_response += "</split>"
+            response_clean = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip().lower()
+            return "true" in response_clean
         except Exception as e:
             print(f"Error in is_new_document LLM call: {e}")
             return False

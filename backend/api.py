@@ -528,3 +528,25 @@ class Api:
                 
         self.send_status("Грамоты успешно сохранены!")
         return saved_files
+
+    def get_page_image(self, file_path, page_num):
+        """Generates a base64 preview image for a specific page of a PDF."""
+        import base64
+        import fitz
+        try:
+            if not os.path.exists(file_path):
+                return ""
+            doc = fitz.open(file_path)
+            if page_num < 1 or page_num > len(doc):
+                doc.close()
+                return ""
+            page = doc[page_num - 1]
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+            img_data = pix.tobytes("jpeg", 80)
+            b64_image = base64.b64encode(img_data).decode("utf-8")
+            doc.close()
+            return b64_image
+        except Exception as e:
+            print(f"Error in get_page_image: {e}")
+            return ""
+

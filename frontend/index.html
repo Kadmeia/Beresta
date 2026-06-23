@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Береста.ИИ</title>
+    <title>Береста.ИИ v1.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
@@ -15,7 +15,7 @@
     <div class="app-container">
         <header>
             <div class="logo-area">
-                <h1>Береста<span>.ИИ</span></h1>
+                <h1>Береста<span>.ИИ</span><span class="app-version">v1.0</span></h1>
                 <span class="subtitle">от создателя DOCXдодыра</span>
             </div>
 
@@ -135,11 +135,11 @@
                 <div class="input-group">
                     <div class="input-box">
                         <span>Свой префикс</span>
-                        <input type="text" class="text-input" placeholder="Например: 2025_">
+                        <input type="text" class="text-input" id="opt-prefix" placeholder="Например: 2025_">
                     </div>
                     <div class="input-box">
                         <span>Свой суффикс</span>
-                        <input type="text" class="text-input" placeholder="Например: _Архив">
+                        <input type="text" class="text-input" id="opt-suffix" placeholder="Например: _Архив">
                     </div>
                 </div>
             </div>
@@ -727,29 +727,93 @@
         }
 
         function saveSettings() {
-            const settings = {
-                optParties: document.getElementById('opt-parties').checked,
-                optFullName: document.getElementById('opt-full-name').checked,
-                optShortName: document.getElementById('opt-short-name').checked,
-                optPages: document.getElementById('opt-pages').checked,
-                optNumbering: document.getElementById('opt-numbering').checked,
-                prefix: document.querySelectorAll('.text-input')[0].value,
-                suffix: document.querySelectorAll('.text-input')[1].value,
-                outputDir: document.getElementById('output-dir').value,
-                optExtractSplit: document.getElementById('opt-extract-split').checked,
-                optExtractAi: document.getElementById('opt-extract-ai').checked,
-                optLayoutEngine: document.getElementById('opt-layout-engine').value,
-                optExtractFormats: Array.from(document.querySelectorAll('.format-checkbox:checked')).map(b => b.dataset.format),
-                currentAppMode: currentAppMode,
-                optExtractParties: document.getElementById('opt-extract-parties') ? document.getElementById('opt-extract-parties').checked : true,
-                optExtractFullName: document.getElementById('opt-extract-full-name') ? document.getElementById('opt-extract-full-name').checked : true,
-                optExtractShortName: document.getElementById('opt-extract-short-name') ? document.getElementById('opt-extract-short-name').checked : false,
-                optExtractPages: document.getElementById('opt-extract-pages') ? document.getElementById('opt-extract-pages').checked : true,
-                optExtractNumbering: document.getElementById('opt-extract-numbering') ? document.getElementById('opt-extract-numbering').checked : false,
-                extractPrefix: document.getElementById('extract-prefix') ? document.getElementById('extract-prefix').value : "",
-                extractSuffix: document.getElementById('extract-suffix') ? document.getElementById('extract-suffix').value : ""
-            };
+            let settings = {};
+            const saved = localStorage.getItem('beresta-settings');
+            if (saved) {
+                try {
+                    settings = JSON.parse(saved);
+                } catch(e) {}
+            }
+            
+            // Shared settings
+            settings.currentAppMode = currentAppMode;
+            settings.outputDir = document.getElementById('output-dir').value;
+            settings.optLayoutEngine = document.getElementById('opt-layout-engine').value;
+            
+            // Ensure section objects exist
+            if (!settings.split) settings.split = {};
+            if (!settings.rename) settings.rename = {};
+            if (!settings.extract) settings.extract = {};
+            
+            // Read active panel fields based on currentAppMode
+            if (currentAppMode === 'split') {
+                settings.split.optParties = document.getElementById('opt-parties').checked;
+                settings.split.optFullName = document.getElementById('opt-full-name').checked;
+                settings.split.optShortName = document.getElementById('opt-short-name').checked;
+                settings.split.optPages = document.getElementById('opt-pages').checked;
+                settings.split.optNumbering = document.getElementById('opt-numbering').checked;
+                settings.split.prefix = document.getElementById('opt-prefix').value;
+                settings.split.suffix = document.getElementById('opt-suffix').value;
+            } else if (currentAppMode === 'rename') {
+                settings.rename.optParties = document.getElementById('opt-parties').checked;
+                settings.rename.optFullName = document.getElementById('opt-full-name').checked;
+                settings.rename.optShortName = document.getElementById('opt-short-name').checked;
+                settings.rename.optPages = document.getElementById('opt-pages').checked;
+                settings.rename.optNumbering = document.getElementById('opt-numbering').checked;
+                settings.rename.prefix = document.getElementById('opt-prefix').value;
+                settings.rename.suffix = document.getElementById('opt-suffix').value;
+            } else if (currentAppMode === 'extract') {
+                settings.extract.optExtractSplit = document.getElementById('opt-extract-split').checked;
+                settings.extract.optExtractAi = document.getElementById('opt-extract-ai').checked;
+                settings.extract.optExtractParties = document.getElementById('opt-extract-parties') ? document.getElementById('opt-extract-parties').checked : true;
+                settings.extract.optExtractFullName = document.getElementById('opt-extract-full-name') ? document.getElementById('opt-extract-full-name').checked : true;
+                settings.extract.optExtractShortName = document.getElementById('opt-extract-short-name') ? document.getElementById('opt-extract-short-name').checked : false;
+                settings.extract.optExtractPages = document.getElementById('opt-extract-pages') ? document.getElementById('opt-extract-pages').checked : true;
+                settings.extract.optExtractNumbering = document.getElementById('opt-extract-numbering') ? document.getElementById('opt-extract-numbering').checked : false;
+                settings.extract.extractPrefix = document.getElementById('extract-prefix') ? document.getElementById('extract-prefix').value : "";
+                settings.extract.extractSuffix = document.getElementById('extract-suffix') ? document.getElementById('extract-suffix').value : "";
+                settings.extract.optExtractFormats = Array.from(document.querySelectorAll('.format-checkbox:checked')).map(b => b.dataset.format);
+            }
+            
             localStorage.setItem('beresta-settings', JSON.stringify(settings));
+        }
+
+        function loadModeSettings(mode) {
+            const saved = localStorage.getItem('beresta-settings');
+            if (!saved) return;
+            try {
+                const settings = JSON.parse(saved);
+                if (mode === 'split' || mode === 'rename') {
+                    const section = settings[mode] || {};
+                    document.getElementById('opt-parties').checked = section.optParties !== undefined ? section.optParties : true;
+                    document.getElementById('opt-full-name').checked = section.optFullName !== undefined ? section.optFullName : true;
+                    document.getElementById('opt-short-name').checked = section.optShortName !== undefined ? section.optShortName : false;
+                    document.getElementById('opt-pages').checked = section.optPages !== undefined ? section.optPages : true;
+                    document.getElementById('opt-numbering').checked = section.optNumbering !== undefined ? section.optNumbering : false;
+                    document.getElementById('opt-prefix').value = section.prefix !== undefined ? section.prefix : "";
+                    document.getElementById('opt-suffix').value = section.suffix !== undefined ? section.suffix : "";
+                } else if (mode === 'extract') {
+                    const section = settings.extract || {};
+                    document.getElementById('opt-extract-split').checked = section.optExtractSplit !== undefined ? section.optExtractSplit : true;
+                    document.getElementById('opt-extract-ai').checked = section.optExtractAi !== undefined ? section.optExtractAi : true;
+                    if (document.getElementById('opt-extract-parties')) document.getElementById('opt-extract-parties').checked = section.optExtractParties !== undefined ? section.optExtractParties : true;
+                    if (document.getElementById('opt-extract-full-name')) document.getElementById('opt-extract-full-name').checked = section.optExtractFullName !== undefined ? section.optExtractFullName : true;
+                    if (document.getElementById('opt-extract-short-name')) document.getElementById('opt-extract-short-name').checked = section.optExtractShortName !== undefined ? section.optExtractShortName : false;
+                    if (document.getElementById('opt-extract-pages')) document.getElementById('opt-extract-pages').checked = section.optExtractPages !== undefined ? section.optExtractPages : true;
+                    if (document.getElementById('opt-extract-numbering')) document.getElementById('opt-extract-numbering').checked = section.optExtractNumbering !== undefined ? section.optExtractNumbering : false;
+                    if (document.getElementById('extract-prefix')) document.getElementById('extract-prefix').value = section.extractPrefix !== undefined ? section.extractPrefix : "";
+                    if (document.getElementById('extract-suffix')) document.getElementById('extract-suffix').value = section.extractSuffix !== undefined ? section.extractSuffix : "";
+                    if (section.optExtractFormats !== undefined) {
+                        document.querySelectorAll('.format-checkbox').forEach(b => {
+                            b.checked = section.optExtractFormats.includes(b.dataset.format);
+                        });
+                    }
+                }
+                
+                if (typeof toggleExtractNamingOptions === 'function') toggleExtractNamingOptions();
+            } catch (e) {
+                console.error("Failed to load mode settings", e);
+            }
         }
 
         function loadSettings() {
@@ -758,40 +822,23 @@
                 try {
                     const settings = JSON.parse(saved);
                     if (settings.theme === 'dark') toggleTheme('dark');
-                    if (settings.optParties !== undefined) document.getElementById('opt-parties').checked = settings.optParties;
-                    if (settings.optFullName !== undefined) document.getElementById('opt-full-name').checked = settings.optFullName;
-                    if (settings.optShortName !== undefined) document.getElementById('opt-short-name').checked = settings.optShortName;
-                    if (settings.optPages !== undefined) document.getElementById('opt-pages').checked = settings.optPages;
-                    if (settings.optNumbering !== undefined) document.getElementById('opt-numbering').checked = settings.optNumbering;
-                    if (settings.prefix !== undefined) document.querySelectorAll('.text-input')[0].value = settings.prefix;
-                    if (settings.suffix !== undefined) document.querySelectorAll('.text-input')[1].value = settings.suffix;
                     if (settings.outputDir !== undefined) document.getElementById('output-dir').value = settings.outputDir;
-                    if (settings.optExtractSplit !== undefined) document.getElementById('opt-extract-split').checked = settings.optExtractSplit;
-                    if (settings.optExtractAi !== undefined) document.getElementById('opt-extract-ai').checked = settings.optExtractAi;
                     if (settings.optLayoutEngine !== undefined) {
                         document.getElementById('opt-layout-engine').value = settings.optLayoutEngine;
                         const layoutRadio = document.getElementById('layout-radio-' + settings.optLayoutEngine);
                         if (layoutRadio) layoutRadio.checked = true;
                         if (currentAppMode === 'extract') checkLayoutEngine();
                     }
-                    if (settings.optExtractFormats !== undefined) {
-                        document.querySelectorAll('.format-checkbox').forEach(b => {
-                            b.checked = settings.optExtractFormats.includes(b.dataset.format);
-                        });
-                    }
-                    if (settings.optExtractParties !== undefined && document.getElementById('opt-extract-parties')) document.getElementById('opt-extract-parties').checked = settings.optExtractParties;
-                    if (settings.optExtractFullName !== undefined && document.getElementById('opt-extract-full-name')) document.getElementById('opt-extract-full-name').checked = settings.optExtractFullName;
-                    if (settings.optExtractShortName !== undefined && document.getElementById('opt-extract-short-name')) document.getElementById('opt-extract-short-name').checked = settings.optExtractShortName;
-                    if (settings.optExtractPages !== undefined && document.getElementById('opt-extract-pages')) document.getElementById('opt-extract-pages').checked = settings.optExtractPages;
-                    if (settings.optExtractNumbering !== undefined && document.getElementById('opt-extract-numbering')) document.getElementById('opt-extract-numbering').checked = settings.optExtractNumbering;
-                    if (settings.extractPrefix !== undefined && document.getElementById('extract-prefix')) document.getElementById('extract-prefix').value = settings.extractPrefix;
-                    if (settings.extractSuffix !== undefined && document.getElementById('extract-suffix')) document.getElementById('extract-suffix').value = settings.extractSuffix;
-                    
-                    if (typeof toggleExtractNamingOptions === 'function') toggleExtractNamingOptions();
                     
                     if (settings.currentAppMode) {
-                        const btn = document.getElementById('mode-btn-' + settings.currentAppMode);
-                        if (btn) setTimeout(() => setMode(settings.currentAppMode, btn), 50);
+                        currentAppMode = settings.currentAppMode;
+                    }
+                    
+                    loadModeSettings(currentAppMode);
+                    
+                    const btn = document.getElementById('mode-btn-' + currentAppMode);
+                    if (btn) {
+                        setTimeout(() => setMode(currentAppMode, btn, true), 50);
                     }
                 } catch (e) {
                     console.error("Failed to load settings", e);
@@ -809,8 +856,8 @@
                 document.getElementById('opt-short-name'),
                 document.getElementById('opt-pages'),
                 document.getElementById('opt-numbering'),
-                document.querySelectorAll('.text-input')[0],
-                document.querySelectorAll('.text-input')[1],
+                document.getElementById('opt-prefix'),
+                document.getElementById('opt-suffix'),
                 document.getElementById('output-dir'),
                 document.getElementById('opt-extract-split'),
                 document.getElementById('opt-extract-ai'),
@@ -846,9 +893,17 @@
 
         let currentAppMode = 'split';
 
-        function setMode(mode, btnElement) {
+        function setMode(mode, btnElement, isLoading = false) {
+            if (!isLoading) {
+                saveSettings();
+            }
+            
             currentAppMode = mode;
-            saveSettings();
+            
+            if (!isLoading) {
+                loadModeSettings(mode);
+            }
+            
             document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
             btnElement.classList.add('active');
             
@@ -891,6 +946,12 @@
                 } else {
                     dropzoneFormats.innerText = "Принимаем бересту: .pdf, .docx";
                 }
+            }
+            
+            triggerAllAutoNames();
+            
+            if (!isLoading) {
+                saveSettings();
             }
         }
 
@@ -1175,11 +1236,11 @@
                 alert("Система уже обрабатывает файлы!");
                 return;
             }
-            isProcessing = true;
             if (selectedFiles.length === 0) {
                 alert("Сначала выберите грамоты (PDF)!");
                 return;
             }
+            isProcessing = true;
 
             const btn = document.getElementById('action-btn');
             const progressContainer = document.getElementById('progress-container');
@@ -1290,8 +1351,8 @@
                 let addParties = document.getElementById('opt-parties').checked;
                 let addPages = document.getElementById('opt-pages').checked;
                 let isFullName = document.getElementById('opt-full-name').checked;
-                let prefix = document.querySelectorAll('.text-input')[0].value.trim();
-                let suffix = document.querySelectorAll('.text-input')[1].value.trim();
+                let prefix = document.getElementById('opt-prefix').value.trim();
+                let suffix = document.getElementById('opt-suffix').value.trim();
                 
                 if (currentAppMode === 'extract') {
                     addParties = document.getElementById('opt-extract-parties').checked;
@@ -1336,6 +1397,7 @@
                     <td style="white-space: nowrap;">
                         <span class="pages-badge">${item.start_page}${item.end_page !== item.start_page ? '–' + item.end_page : ''}</span>
                         <button class="btn-action" onclick="openPreview(${item.start_page}, '${item.parties ? item.parties.replace(/'/g, "\\'") : ''}', '${isFullName ? item.full_name : item.short_name}', ${index})" title="Просмотр страницы">🔍</button>
+                        ${item.start_page !== item.end_page ? `<button class="btn-action" onclick="promptSplitDocument(${index})" title="Разделить документ">✂️</button>` : ''}
                     </td>
                     <td colspan="4" class="merge-container-cell" style="padding: 0;">
                         <div class="fields-wrapper hide-on-merge" style="display: flex; gap: 8px; padding: 10px 12px; width: 100%;">
@@ -1398,8 +1460,8 @@
             let isFullName = document.getElementById('opt-full-name').checked;
             let isShortName = document.getElementById('opt-short-name').checked;
             let addNumbering = document.getElementById('opt-numbering').checked;
-            let prefix = document.querySelectorAll('.text-input')[0].value.trim();
-            let suffix = document.querySelectorAll('.text-input')[1].value.trim();
+            let prefix = document.getElementById('opt-prefix').value.trim();
+            let suffix = document.getElementById('opt-suffix').value.trim();
 
             if (currentAppMode === 'extract') {
                 addParties = document.getElementById('opt-extract-parties').checked;
@@ -1473,6 +1535,79 @@
             item.isMerged = !item.isMerged;
 
             // Re-render the whole table to reflect merged states easily
+            renderPreviewTable(previewData);
+        }
+
+        async function promptSplitDocument(index) {
+            const item = previewData[index];
+            if (!item || item.start_page === item.end_page) return;
+
+            const defaultSplit = Math.min(item.start_page + 1, item.end_page);
+            const promptMsg = `Разделить документ (страницы ${item.start_page}-${item.end_page}).\nУкажите страницу, с которой начнется новый документ:`;
+            const result = prompt(promptMsg, defaultSplit);
+            
+            if (result === null) return; // User cancelled
+            
+            const splitPage = parseInt(result.trim(), 10);
+            if (isNaN(splitPage) || splitPage <= item.start_page || splitPage > item.end_page) {
+                alert(`Некорректный номер страницы. Пожалуйста, укажите число от ${item.start_page + 1} до ${item.end_page}.`);
+                return;
+            }
+
+            const originalEndPage = item.end_page;
+            const originalStartPage = item.start_page;
+            
+            // Adjust current item (Part 1)
+            item.end_page = splitPage - 1;
+            item.actual_page_count = item.end_page - item.start_page + 1;
+            item.isManualEdit = false;
+            item.new_name = ""; // Will be regenerated
+
+            // Split the text
+            let text1 = "";
+            let text2 = "";
+            if (item.text) {
+                const pageTexts = item.text.split('\n\n');
+                const totalPages = originalEndPage - originalStartPage + 1;
+                if (pageTexts.length === totalPages) {
+                    text1 = pageTexts.slice(0, splitPage - originalStartPage).join('\n\n');
+                    text2 = pageTexts.slice(splitPage - originalStartPage).join('\n\n');
+                } else {
+                    const ratio = (splitPage - originalStartPage) / totalPages;
+                    const splitIndex = Math.floor(pageTexts.length * ratio);
+                    text1 = pageTexts.slice(0, splitIndex).join('\n\n');
+                    text2 = pageTexts.slice(splitIndex).join('\n\n');
+                }
+            }
+            item.text = text1;
+
+            // Create Part 2
+            const part2 = JSON.parse(JSON.stringify(item));
+            part2.start_page = splitPage;
+            part2.end_page = originalEndPage;
+            part2.actual_page_count = part2.end_page - part2.start_page + 1;
+            part2.isManualEdit = false;
+            part2.new_name = "";
+            part2.text = text2;
+            part2.isMerged = false;
+            part2.image_b64 = ""; // Reset image so we can fetch the correct one
+            
+            // We fetch the base64 image for the new page from the backend!
+            if (window.pywebview && item.original_file) {
+                try {
+                    const b64 = await pywebview.api.get_page_image(item.original_file, splitPage);
+                    if (b64) {
+                        part2.image_b64 = b64;
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch image for split page:", e);
+                }
+            }
+
+            // Insert part2 right after the current item
+            previewData.splice(index + 1, 0, part2);
+
+            // Re-render table
             renderPreviewTable(previewData);
         }
 
