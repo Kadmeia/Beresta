@@ -144,29 +144,44 @@ class Api:
         return self.layout_processor.check_engine(engine)
 
     def download_layout_engine(self, engine):
-        def custom_cb(msg):
-            print(f"LAYOUT_STATUS: {msg}")
-            if self.window:
-                safe_msg = msg.replace('`', "'").replace('\\', '\\\\')
-                self.window.evaluate_js(f"window.updateLayoutDownloadStatus && window.updateLayoutDownloadStatus(`{safe_msg}`)")
-                
-        try:
-            success = self.layout_processor.download_engine(engine, custom_cb)
-            return "OK" if success else "FAIL"
-        except Exception as e:
-            return str(e)
+        def dl_task():
+            def custom_cb(msg):
+                print(f"LAYOUT_STATUS: {msg}")
+                if self.window:
+                    safe_msg = msg.replace('`', "'").replace('\\', '\\\\')
+                    self.window.evaluate_js(f"window.updateLayoutDownloadStatus && window.updateLayoutDownloadStatus(`{safe_msg}`)")
+                    
+            try:
+                success = self.layout_processor.download_engine(engine, custom_cb)
+                if self.window:
+                    if success:
+                        self.window.evaluate_js(f"window.layoutDownloadComplete && window.layoutDownloadComplete(true, '{engine}')")
+                    else:
+                        self.window.evaluate_js(f"window.layoutDownloadComplete && window.layoutDownloadComplete(false, '{engine}')")
+            except Exception as e:
+                print(f"Error in layout download: {e}")
+                if self.window:
+                    self.window.evaluate_js(f"window.layoutDownloadComplete && window.layoutDownloadComplete(false, '{engine}')")
+
+        import threading
+        t = threading.Thread(target=dl_task, daemon=True)
+        t.start()
+        return "Started"
 
     def check_model(self):
-        """Called by frontend on startup. Returns true if ANY model exists."""
+        """Called by frontend on startup. Returns true if active model and engine exist."""
         active = self.model_manager.get_active_model_type()
-        return self.model_manager.check_model_exists(active)
+        model_exists = self.model_manager.check_model_exists(active)
+        server_exists = self.model_manager.check_llama_server_exists()
+        return model_exists and server_exists
 
     def get_models_status(self):
         active = self.model_manager.get_active_model_type()
+        server_exists = self.model_manager.check_llama_server_exists()
         status = {}
         for m_type in self.model_manager.models:
             status[m_type] = {
-                "installed": self.model_manager.check_model_exists(m_type),
+                "installed": self.model_manager.check_model_exists(m_type) and server_exists,
                 "active": m_type == active
             }
         return status
@@ -250,12 +265,27 @@ class Api:
 
     @_lock
     def download_model(self, model_type="fast"):
-        """Starts model download"""
+        """Starts model download and llama-server download"""
         def progress_callback(msg):
             self.send_status(msg)
             
-        self.model_manager.download_model(model_type, progress_callback)
-        return "Started"
+        try:
+            if not self.model_manager.check_llama_server_exists():
+                self.send_status("Подготовка движка: скачивание llama-server...")
+                success = self.model_manager.download_llama_server(progress_callback)
+                if not success:
+                    self.send_status("Ошибка при скачивании движка llama-server. Загрузка модели отменена.")
+                    return "Error"
+            
+            self.send_status(f"Начинаем скачивание файлов нейросети {model_type}...")
+            self.model_manager.download_model(model_type, progress_callback)
+            
+            if self.window:
+                self.window.evaluate_js("window.checkModelStatus && window.checkModelStatus();")
+            return "Started"
+        except Exception as e:
+            self.send_status(f"Ошибка установки компонентов: {str(e)}")
+            return f"Error: {e}"
 
     @_lock
     def process_files(self, file_paths, mode="split", extract_settings=None):

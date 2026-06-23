@@ -1,33 +1,134 @@
 import os
 import json
 import re
-from llama_cpp import Llama
+import subprocess
+import time
+import urllib.request
+import platform
+import socket
 
 class LLMHandler:
     def __init__(self, model_path):
         self.model_path = model_path
-        self.llm = None
+        self.model_dir = os.path.dirname(model_path)
+        self.server_path = os.path.join(self.model_dir, 'bin', 'llama-server')
+        self.process = None
+        self.port = None
+
+    def _find_free_port(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(('', 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
 
     def load_model(self):
         if not os.path.exists(self.model_path):
-            raise FileNotFoundError(f"Model not found at {self.model_path}")
+            raise FileNotFoundError(f"Модель не найдена по пути: {self.model_path}")
             
-        self.llm = Llama(
-            model_path=self.model_path,
-            n_ctx=4096,
-            n_gpu_layers=0,
-            verbose=False # Отключаем спам в логи
+        if not os.path.exists(self.server_path):
+            raise FileNotFoundError(f"Движок llama-server не найден по пути: {self.server_path}. Пожалуйста, скачайте компоненты.")
+            
+        self.port = self._find_free_port()
+        
+        machine = platform.machine().lower()
+        # На Apple Silicon (arm64) переносим все слои в GPU (Metal)
+        # На Intel (x86_64) используем CPU (ngl 0)
+        ngl = "99" if ("arm" in machine or "aarch64" in machine) else "0"
+        
+        cmd = [
+            self.server_path,
+            "-m", self.model_path,
+            "-c", "4096",
+            "--port", str(self.port),
+            "-ngl", ngl,
+            "--threads", "4",
+            "--log-disable"
+        ]
+        
+        print(f"Starting llama-server: {' '.join(cmd)}")
+        self.process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
         )
+        
+        # Ждем запуска сервера, опрашивая endpoint /health
+        health_url = f"http://127.0.0.1:{self.port}/health"
+        retries = 40
+        connected = False
+        for _ in range(retries):
+            if self.process.poll() is not None:
+                stderr_output = self.process.stderr.read()
+                print(f"llama-server завершился с кодом {self.process.returncode}. Stderr: {stderr_output}")
+                raise RuntimeError(f"Не удалось запустить движок ИИ: {stderr_output}")
+                
+            try:
+                req = urllib.request.Request(health_url)
+                with urllib.request.urlopen(req, timeout=1) as response:
+                    if response.status == 200:
+                        data = json.loads(response.read().decode('utf-8'))
+                        if data.get('status') == 'ok':
+                            connected = True
+                            break
+            except Exception:
+                pass
+            time.sleep(0.5)
+            
+        if not connected:
+            self.unload_model()
+            raise RuntimeError("Превышено время ожидания запуска ИИ движка.")
+            
+        print(f"llama-server успешно запущен на порту {self.port}")
 
     def unload_model(self):
-        if self.llm:
-            self.llm = None
+        if self.process:
+            print("Stopping llama-server process...")
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=3)
+            except Exception:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+            self.process = None
+            self.port = None
 
-    def analyze_text(self, text, page_num, retry=0):
-        if not self.llm:
+    def __del__(self):
+        self.unload_model()
+
+    def _query_server(self, prompt, max_tokens=300, temperature=0.0, repeat_penalty=1.0, stop=None):
+        if stop is None:
+            stop = []
+        if not self.process:
             self.load_model()
             
-        # Prefilled XML-based prompt template for Stage 1 Metadata Extraction
+        url = f"http://127.0.0.1:{self.port}/completion"
+        data = {
+            "prompt": prompt,
+            "n_predict": max_tokens,
+            "temperature": temperature,
+            "repeat_penalty": repeat_penalty,
+            "stop": stop
+        }
+        
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        try:
+            with urllib.request.urlopen(req, timeout=120) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                return res_data.get('content', '')
+        except Exception as e:
+            print(f"Error querying llama-server: {e}")
+            raise RuntimeError(f"Ошибка обращения к ИИ-серверу: {e}")
+
+    def analyze_text(self, text, page_num, retry=0):
         prompt = f"""<|im_start|>system
 Ты — строгий робот-анализатор. Твоя задача — извлечь реквизиты документа из его текста (полученного через OCR).
 Исправь опечатки OCR в именах и названиях. Выведи результат СТРОГО в формате XML-тегов.
@@ -83,29 +184,27 @@ class LLMHandler:
 <parties>"""
 
         try:
-            output = self.llm(
+            generated_text = self._query_server(
                 prompt,
                 max_tokens=300,
-                temperature=0.0, # strict temperature
+                temperature=0.0,
                 stop=["<|im_end|>", "</metadata>"]
             )
             
-            # Reconstruct and clean
-            response_text = "<metadata>\n<parties>" + output['choices'][0]['text'].strip()
+            # Восстанавливаем и очищаем структуру
+            response_text = "<metadata>\n<parties>" + generated_text.strip()
             if not response_text.endswith("</metadata>"):
                 response_text += "\n</metadata>"
             
-            # Remove any <think> tags if model thought
             response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL)
             
             print(f"DEBUG LLM RAW:\n{response_text}")
             
-            # Stage 1: parse XML fields
+            # Чтение полей
             def get_xml_tag(tag, default="-"):
                 m = re.search(fr"<{tag}>(.*?)</{tag}>", response_text, flags=re.DOTALL | re.IGNORECASE)
                 val = m.group(1).strip() if m else default
                 val_clean = val.strip()
-                # Игнорируем различные плейсхолдеры и мусорные значения, которые может вернуть ИИ
                 if val_clean.lower() in ["", "-", "—", "нет", "none", "null", "б/н", "б/д"]:
                     return default
                 return val_clean
@@ -116,11 +215,10 @@ class LLMHandler:
             doc_date = get_xml_tag("doc_date")
             confidence_str = get_xml_tag("confidence", "0")
             
-            # Parse confidence
             nums = re.findall(r'\d+', confidence_str)
             confidence_score = int(nums[0]) if nums else 0
             
-            # Format parties
+            # Форматирование сторон
             def format_parties(text):
                 if not text or text == "-": return ""
                 text = re.sub(r'(?i)общество\s+с\s+ограниченной\s+ответственностью', 'ООО', text)
@@ -128,7 +226,6 @@ class LLMHandler:
                 text = re.sub(r'(?i)акционерное\s+общество', 'АО', text)
                 text = re.sub(r'(?i)индивидуальный\s+предприниматель', 'ИП', text)
                 
-                # Clean LLM artifacts and extra keywords
                 text = re.sub(r'(?i)\(?[^,;()]*\b(именуемое в дальнейшем|именуемый в дальнейшем|именуемое|именуемый|именуемая)\b[^,;()]*\)?', '', text)
                 text = re.sub(r'(?i)\(?[^,;()]*\b(заказчик|исполнитель|покупатель|поставщик|подрядчик|арендатор|арендодатель|сторона)\b[^,;()]*\)?', '', text)
                 text = re.sub(r'(?i)\(?[^,;()]*\b(генеральный\s+директор|директор|в лице|действующего на основании)\b[^,;()]*\)?', '', text)
@@ -153,14 +250,10 @@ class LLMHandler:
                 for p in parts:
                     if p.lower().startswith('и '):
                         p = p[2:].strip()
-                    # Clean trailing artifacts
                     p = re.sub(r'(?i)\s+ОГРИП\s*$', '', p)
                     p = re.sub(r'(?i)\s+ОГРНИП\s*$', '', p)
                     p = re.sub(r'(?i)\s+ОГРН\s*$', '', p)
                     
-                    # Normalize known entity variations (removed hardcoded examples)
-
-                        
                     if len(p) > 2 and len(p) < 80 and not p.lower().startswith('с одной стороны') and not p.lower().startswith('с другой стороны'):
                         if p not in seen:
                             seen.add(p)
@@ -171,7 +264,6 @@ class LLMHandler:
 
             parties = format_parties(parties_raw)
             
-            # Format and sanitize doc_type
             first_word_match = re.search(r'^([А-Яа-яЁёA-Za-z]+)', doc_type)
             if first_word_match:
                 raw_type = first_word_match.group(1).capitalize()
@@ -179,15 +271,11 @@ class LLMHandler:
                 raw_type = "Документ"
             raw_type = raw_type.replace('N&', '№').replace('Ng', '№').replace('N@', '№')
             
-            # Parse date strictly (ensure DD.MM.YYYY)
             date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', doc_date)
             clean_date = f"{date_match.group(1)}.{date_match.group(2)}.{date_match.group(3)}" if date_match else "-"
             
             if clean_date == "-":
-                # Fallback: try to extract from raw text using regex, picking the earliest match
                 matches = []
-                
-                # 1. Look for DD.MM.YYYY or DD.MM.YY
                 for m in re.finditer(r'\b(\d{1,2})\.(\d{2})\.(\d{2,4})\b', text):
                     day = int(m.group(1))
                     month = m.group(2)
@@ -196,7 +284,6 @@ class LLMHandler:
                         year = "20" + year
                     matches.append((m.start(), f"{day:02d}.{month}.{year}"))
                     
-                # 2. Look for DD MonthName YYYY/YY
                 months_ru = {
                     "января": "01", "февраля": "02", "марта": "03", "апреля": "04",
                     "мая": "05", "июня": "06", "июля": "07", "августа": "08",
@@ -212,11 +299,9 @@ class LLMHandler:
                     matches.append((m.start(), f"{day:02d}.{month}.{year}"))
                 
                 if matches:
-                    # Sort matches by start position in text
                     matches.sort(key=lambda x: x[0])
                     clean_date = matches[0][1]
             
-            # Stage 2: Compile name in Python to avoid hallucinations
             full_parts = []
             full_type = raw_type
             if raw_type.lower() == "акт":
@@ -256,18 +341,11 @@ class LLMHandler:
             }
 
     def is_new_document(self, text, page_num):
-        """Verifies if the page starts a new document using the LLM."""
-        if not self.llm:
-            self.load_model()
-            
-        # Clean text for split decision to match examples and simplify for small LLM
+        """Проверяет, начинается ли новый документ на текущей странице."""
         clean_text = text[:2000]
-        # Remove markdown headers
         clean_text = re.sub(r'#+\s*', '', clean_text)
-        # Remove markdown table lines
         clean_text = re.sub(r'\|', ' ', clean_text)
         clean_text = re.sub(r'[-:]{3,}', ' ', clean_text)
-        # Normalize spaces and newlines
         clean_text = re.sub(r'\s+', ' ', clean_text).strip()
             
         prompt = f"""<|im_start|>system
@@ -305,13 +383,12 @@ class LLMHandler:
 <|im_start|>assistant
 """
         try:
-            output = self.llm(
+            raw_response = self._query_server(
                 prompt,
-                max_tokens=300,
+                max_tokens=100,
                 temperature=0.0,
                 stop=["<|im_end|>", "</split>"]
             )
-            raw_response = output['choices'][0]['text']
             if not raw_response.endswith("</split>") and "</split>" not in raw_response:
                 raw_response += "</split>"
             response_clean = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip().lower()
@@ -321,9 +398,7 @@ class LLMHandler:
             return False
 
     def proofread_text(self, raw_text):
-        if not self.llm:
-            self.load_model()
-            
+        """Исправляет ошибки OCR."""
         prompt = f"""<|im_start|>system
 Ты — профессиональный корректор. Твоя задача исправить опечатки распознавания текста (OCR), убрать лишние переносы строк внутри абзацев и исправить лишние пробелы.
 Не меняй смысл текста, факты, ФИО, цифры и суммы. Выведи ТОЛЬКО исправленный текст без вступительных или заключительных слов.<|im_end|>
@@ -333,19 +408,15 @@ class LLMHandler:
 <|im_start|>assistant
 """
         try:
-            output = self.llm(
+            response_text = self._query_server(
                 prompt,
-                max_tokens=4000,
+                max_tokens=2048,
                 temperature=0.1,
                 repeat_penalty=1.15,
                 stop=["<|im_end|>", "user"]
             )
-            response_text = output['choices'][0]['text'].strip()
-            
-            # Убираем теги <think>
             response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL).strip()
             
-            # Если нейросеть почему-то вернула пустой результат, возвращаем оригинал
             if not response_text:
                 return raw_text
                 

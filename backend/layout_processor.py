@@ -6,7 +6,21 @@ class LayoutProcessor:
         self.docling_converter = None
         self.pp_structure = None
 
+
     def check_engine(self, engine_name):
+        import sys, os
+        if getattr(sys, 'frozen', False):
+            env_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'env')
+            pip_bin = os.path.join(env_dir, 'bin', 'pip') if sys.platform != 'win32' else os.path.join(env_dir, 'Scripts', 'pip.exe')
+            if engine_name == 'docling':
+                # Check if docling is installed in env
+                import subprocess
+                try:
+                    res = subprocess.run([pip_bin, 'show', 'docling'], capture_output=True, text=True)
+                    return 'Name: docling' in res.stdout
+                except:
+                    return False
+        
         if engine_name == 'docling':
             try:
                 import docling
@@ -20,11 +34,34 @@ class LayoutProcessor:
             except ImportError:
                 return False
         return False
+        elif engine_name == 'ppstructure':
+            try:
+                from paddleocr import PPStructure
+                return True
+            except ImportError:
+                return False
+        return False
+
 
     def _run_pip_with_progress(self, packages, progress_callback):
         import subprocess
         import sys
-        cmd = [sys.executable, "-m", "pip", "install"] + packages
+        import os
+        
+        # If running as a frozen PyInstaller app, create an external venv
+        if getattr(sys, 'frozen', False):
+            env_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'env')
+            python_cmd = "python3" if sys.platform != "win32" else "python"
+            
+            if not os.path.exists(env_dir):
+                if progress_callback: progress_callback("Создание изолированного окружения...")
+                subprocess.run([python_cmd, "-m", "venv", env_dir], check=True)
+                
+            pip_bin = os.path.join(env_dir, 'bin', 'pip') if sys.platform != 'win32' else os.path.join(env_dir, 'Scripts', 'pip.exe')
+            cmd = [pip_bin, "install"] + packages
+        else:
+            cmd = [sys.executable, "-m", "pip", "install"] + packages
+            
         try:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             buffer = []
@@ -32,7 +69,8 @@ class LayoutProcessor:
                 char = process.stdout.read(1)
                 if not char:
                     break
-                if char in ('\r', '\n'):
+                if char in ('', '
+'):
                     line = "".join(buffer).strip()
                     if line and progress_callback:
                         if "Downloading" in line or "Collecting" in line or "%" in line or "MB" in line or "kB" in line or "━" in line:
@@ -40,8 +78,6 @@ class LayoutProcessor:
                             progress_callback(short_line)
                         elif "Successfully installed" in line:
                             progress_callback("Установка библиотек завершена...")
-                        elif "ERROR:" in line or "error:" in line.lower():
-                            print(f"PIP ERROR: {line}")
                     buffer = []
                 else:
                     buffer.append(char)

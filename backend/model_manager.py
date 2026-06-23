@@ -113,3 +113,122 @@ class ModelManager:
 
         download_task()
         return "Done"
+
+    def check_llama_server_exists(self):
+        bin_dir = os.path.join(self.model_dir, 'bin')
+        server_path = os.path.join(bin_dir, 'llama-server')
+        return os.path.exists(server_path) and os.access(server_path, os.X_OK)
+
+    def get_llama_server_path(self):
+        bin_dir = os.path.join(self.model_dir, 'bin')
+        return os.path.join(bin_dir, 'llama-server')
+
+    def download_llama_server(self, progress_callback=None):
+        """
+        Downloads llama-server for the current architecture and extracts it.
+        """
+        import platform
+        import tarfile
+        import shutil
+        import urllib.request
+        
+        bin_dir = os.path.join(self.model_dir, 'bin')
+        os.makedirs(bin_dir, exist_ok=True)
+        server_path = self.get_llama_server_path()
+        
+        if self.check_llama_server_exists():
+            if progress_callback:
+                progress_callback("Движок llama-server уже готов.")
+            return True
+            
+        machine = platform.machine().lower()
+        # GitHub release URLs for llama.cpp b9771
+        version = "b9771"
+        if "arm" in machine or "aarch64" in machine:
+            arch = "arm64"
+            filename = f"llama-{version}-bin-macos-arm64.tar.gz"
+        else:
+            arch = "x64"
+            filename = f"llama-{version}-bin-macos-x64.tar.gz"
+            
+        url = f"https://github.com/ggml-org/llama.cpp/releases/download/{version}/{filename}"
+        temp_tar_path = os.path.join(bin_dir, 'llama_server_temp.tar.gz')
+        
+        if progress_callback:
+            progress_callback(f"Скачивание движка llama-server ({arch})...")
+            
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                with open(temp_tar_path, 'wb') as f:
+                    while True:
+                        chunk = response.read(1024*128)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0 and progress_callback:
+                            percent = int((downloaded / total_size) * 100)
+                            progress_callback(f"Скачивание движка llama-server: {percent}%")
+                            
+            if progress_callback:
+                progress_callback("Распаковка движка...")
+                
+            # Extract tar.gz flatly into bin_dir
+            with tarfile.open(temp_tar_path, 'r:gz') as tar:
+                temp_extract_dir = os.path.join(bin_dir, 'extract_temp')
+                os.makedirs(temp_extract_dir, exist_ok=True)
+                tar.extractall(path=temp_extract_dir)
+                
+                for root, dirs, files in os.walk(temp_extract_dir):
+                    for file in files:
+                        file_src = os.path.join(root, file)
+                        file_dst = os.path.join(bin_dir, file)
+                        if os.path.exists(file_dst):
+                            os.remove(file_dst)
+                        shutil.move(file_src, file_dst)
+                        
+                shutil.rmtree(temp_extract_dir)
+                    
+            # Clean up temp archive
+            if os.path.exists(temp_tar_path):
+                os.remove(temp_tar_path)
+                
+            # Remove any subfolders in bin_dir that were left
+            for entry in os.listdir(bin_dir):
+                entry_path = os.path.join(bin_dir, entry)
+                if os.path.isdir(entry_path):
+                    shutil.rmtree(entry_path)
+                    
+            if os.path.exists(server_path):
+                # chmod +x для исполняемых файлов
+                os.chmod(server_path, 0o755)
+                # Даем права запуска всем dylib тоже
+                for entry in os.listdir(bin_dir):
+                    if entry.endswith('.dylib') or entry == 'llama-server':
+                        os.chmod(os.path.join(bin_dir, entry), 0o755)
+                
+                # Remove macOS quarantine
+                try:
+                    import subprocess
+                    for entry in os.listdir(bin_dir):
+                        entry_path = os.path.join(bin_dir, entry)
+                        subprocess.run(["xattr", "-d", "com.apple.quarantine", entry_path], stderr=subprocess.DEVNULL)
+                except Exception as ex:
+                    print(f"Quarantine removal warning: {ex}")
+                
+                if progress_callback:
+                    progress_callback("Движок llama-server успешно установлен.")
+                return True
+            else:
+                raise FileNotFoundError("Не удалось найти llama-server в скачанном архиве.")
+        except Exception as e:
+            if os.path.exists(temp_tar_path):
+                os.remove(temp_tar_path)
+            if progress_callback:
+                progress_callback(f"Ошибка установки движка: {str(e)}")
+            print(f"Error downloading/extracting llama-server: {e}")
+            return False
+

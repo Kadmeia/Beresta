@@ -5,7 +5,6 @@ import pytesseract
 from PIL import Image, ImageEnhance, ImageStat
 import io
 import re
-import numpy as np
 
 class PDFProcessor:
     def __init__(self):
@@ -15,7 +14,12 @@ class PDFProcessor:
             exe_path = os.path.join(tess_dir, 'tesseract.exe')
             if os.path.exists(exe_path):
                 pytesseract.pytesseract.tesseract_cmd = exe_path
-        self.ocr_engine = 'paddleocr'
+        
+        if sys.platform == 'darwin':
+            self.ocr_engine = 'applevision'
+        else:
+            self.ocr_engine = 'paddleocr'
+            
         self.paddle_ocr = None
         self.model_storage_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'paddleocr')
 
@@ -67,6 +71,7 @@ class PDFProcessor:
                     self.paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ru')
                 
                 # PaddleOCR expects numpy array (BGR or RGB)
+                import numpy as np
                 img_np = np.array(img.convert('RGB'))
                 if status_callback:
                     status_callback("Распознавание текста через PaddleOCR...")
@@ -292,11 +297,29 @@ class PDFProcessor:
         import sys
         import subprocess
         if sys.platform != 'win32':
-            try:
-                subprocess.run(['tesseract', '-v'], capture_output=True, check=True)
-                return True
-            except:
-                return False
+            import shutil
+            import os
+            
+            # 1. Проверяем в стандартном PATH
+            tess_path = shutil.which('tesseract')
+            
+            # 2. Проверяем в стандартных директориях Homebrew
+            if not tess_path:
+                for path in ['/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract']:
+                    if os.path.exists(path):
+                        tess_path = path
+                        break
+                        
+            if tess_path:
+                try:
+                    subprocess.run([tess_path, '-v'], capture_output=True, check=True)
+                    # Если нашли через brew, нужно указать путь для pytesseract
+                    import pytesseract
+                    pytesseract.pytesseract.tesseract_cmd = tess_path
+                    return True
+                except:
+                    return False
+            return False
                 
         tess_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'tesseract')
         exe_path = os.path.join(tess_dir, 'tesseract.exe')

@@ -1,7 +1,9 @@
 pywebview>=4.4.1
-llama-cpp-python>=0.2.77
 PyMuPDF>=1.24.4
-huggingface-hub>=0.23.2
 pypdf>=4.2.0
 python-docx>=1.2.0
 pytesseract>=0.3.10
+pyobjc-core>=10.0
+pyobjc-framework-Cocoa>=10.0
+pyobjc-framework-Vision>=10.0
+Pillow>=10.0.0
