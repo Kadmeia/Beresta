@@ -7,3 +7,8 @@ pyobjc-core>=10.0
 pyobjc-framework-Cocoa>=10.0
 pyobjc-framework-Vision>=10.0
 Pillow>=10.0.0
+google-genai
+smolagents
+docling
+onnxruntime
+rapidocr-onnxruntime

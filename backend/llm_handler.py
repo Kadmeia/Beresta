@@ -7,6 +7,148 @@ import urllib.request
 import platform
 import socket
 
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+
+METADATA_GRAMMAR = r"""root      ::= "<metadata>\n" parties typ num date conf "</metadata>"
+parties   ::= "<parties>" line "</parties>\n"
+typ       ::= "<doc_type>" line "</doc_type>\n"
+num       ::= "<doc_number>" line "</doc_number>\n"
+date      ::= "<doc_date>" line "</doc_date>\n"
+conf      ::= "<confidence>" [0-9]+ "</confidence>\n"
+line      ::= [^<\n]*
+"""
+
+def format_parties(text):
+    if not text or text == "-": return ""
+    text = re.sub(r'(?i)общество\s+с\s+ограниченной\s+ответственностью', 'ООО', text)
+    text = re.sub(r'(?i)публичное\s+акционерное\s+общество', 'ПАО', text)
+    text = re.sub(r'(?i)акционерное\s+общество', 'АО', text)
+    text = re.sub(r'(?i)индивидуальный\s+предприниматель', 'ИП', text)
+    
+    text = re.sub(r'(?i)\(?[^,;()]*\b(именуемое в дальнейшем|именуемый в дальнейшем|именуемое|именуемый|именуемая)\b[^,;()]*\)?', '', text)
+    text = re.sub(r'(?i)\(?[^,;()]*\b(заказчик|исполнитель|покупатель|поставщик|подрядчик|арендатор|арендодатель|сторона)\b[^,;()]*\)?', '', text)
+    text = re.sub(r'(?i)\(?[^,;()]*\b(генеральный\s+директор|директор|в лице|действующего на основании)\b[^,;()]*\)?', '', text)
+    text = re.sub(r'(?i)ОГРНИП\s*\d*', '', text)
+    text = re.sub(r'(?i)ОГРН\s*\d*', '', text)
+    text = re.sub(r'(?i)ОГРИП\s*\d*', '', text)
+    text = re.sub(r'(?i)ИНН\s*\d*', '', text)
+    text = re.sub(r'(?i)\(ИНН[^)]*\)', '', text)
+    text = re.sub(r'(?i)\(ОГРНИП[^)]*\)', '', text)
+    
+    text = re.sub(r'\d{10,}', '', text)
+    text = re.sub(r'\(\s*\)', '', text)
+    text = re.sub(r'[;]', ',', text)
+    text = re.sub(r',\s*,', ',', text)
+    text = re.sub(r'^\s*,\s*|\s*,\s*$', '', text)
+    
+    if not text.strip(): return "-"
+    
+    parts = [p.strip() for p in text.split(',') if p.strip()]
+    clean_parts = []
+    seen = set()
+    for p in parts:
+        if p.lower().startswith('и '):
+            p = p[2:].strip()
+        p = re.sub(r'(?i)\s+ОГРИП\s*$', '', p)
+        p = re.sub(r'(?i)\s+ОГРНИП\s*$', '', p)
+        p = re.sub(r'(?i)\s+ОГРН\s*$', '', p)
+        
+        if len(p) > 2 and len(p) < 80 and not p.lower().startswith('с одной стороны') and not p.lower().startswith('с другой стороны'):
+            if p not in seen:
+                seen.add(p)
+                clean_parts.append(p)
+    
+    result = "_".join(clean_parts)
+    return result if result else "-"
+
+def clean_doc_type(doc_type):
+    if not doc_type:
+        return "Документ"
+    cleaned = re.sub(r'[^\w\s\-№""«»\.\,]', '', doc_type).strip()
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    if cleaned:
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    else:
+        cleaned = "Документ"
+    cleaned = cleaned.replace('N&', '№').replace('Ng', '№').replace('N@', '№')
+    return cleaned
+
+def clean_doc_date(doc_date, document_text=None):
+    if not doc_date:
+        doc_date = "-"
+    date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', doc_date)
+    clean_date = f"{date_match.group(1)}.{date_match.group(2)}.{date_match.group(3)}" if date_match else "-"
+    
+    return clean_date
+
+class GeminiHandler:
+    def __init__(self, api_key, model_name):
+        self.api_key = api_key
+        self.model_name = model_name
+        if not genai:
+            raise RuntimeError("google-genai не установлен. Пожалуйста, выполните: pip install google-genai")
+        self.client = genai.Client(api_key=self.api_key)
+
+    def analyze_documents_bulk(self, docs_text_list):
+        prompt = """Ты — строгий робот-анализатор. Твоя задача — извлечь реквизиты документов из переданных текстов (полученных через OCR).
+Исправь опечатки OCR в именах и названиях. Выведи результат СТРОГО в формате JSON.
+Не пиши никаких рассуждений.
+
+ПРАВИЛА ИЗВЛЕЧЕНИЯ ДЛЯ КАЖДОГО ДОКУМЕНТА:
+1. Стороны (parties) — извлеки краткие названия организаций и ФИО граждан. Обязательно исключи ИНН, ОГРН, адреса, должности, слова "именуемый в дальнейшем". Если сторон нет, верни "-".
+2. Тип (doc_type) — ПОЛНОЕ ДОСЛОВНОЕ наименование (заголовок) документа как в тексте. Обязательно включай все относящиеся к заголовку приписки (например: "к Приложению №1...", "к Договору...", "на объект недвижимости"). НЕ сокращай заголовок до одного слова! (например: "Акт сдачи-приемки оказанных услуг к Приложению №15", "Выписка из ЕГРН об основных характеристиках"). По умолчанию "Документ".
+3. Номер (number) — только короткий номер самого документа (после знака № или слова "номер"). Игнорируй ИНН/ОГРН. Если нет, верни "-".
+4. Дата (date) — дата подписания документа. Переведи её в числовой формат ДД.ММ.ГГГГ. Если нет, верни "-".
+5. Учитывай только реквизиты текущего документа, игнорируй реквизиты договоров-оснований, упоминаемых в тексте.
+6. Поле doc_id должно в точности соответствовать переданному DOCUMENT ID (это строка-идентификатор).
+
+Формат вывода (JSON):
+{
+  "results": [
+    {
+      "doc_id": <string>,
+      "parties": <string>,
+      "doc_type": <string>,
+      "number": <string>,
+      "date": <string>
+    }
+  ]
+}
+
+Входные документы:
+"""
+        for doc in docs_text_list:
+            prompt += f"\n--- DOCUMENT ID {doc['doc_id']} ---\n{doc['text'][:3000]}\n"
+
+        import time
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.0
+                    )
+                )
+                data = json.loads(response.text)
+                return data.get("results", [])
+            except Exception as e:
+                err_str = str(e)
+                if ("503" in err_str or "429" in err_str) and attempt < max_retries - 1:
+                    print(f"Gemini API rate limit / 503 error (attempt {attempt+1}/{max_retries}). Retrying in 8 seconds...")
+                    time.sleep(8)
+                    continue
+                import traceback
+                error_details = traceback.format_exc()
+                print(f"Gemini API Error details:\n{error_details}")
+                raise RuntimeError(f"{e}")
+
 class LLMHandler:
     def __init__(self, model_path):
         self.model_path = model_path
@@ -99,20 +241,24 @@ class LLMHandler:
     def __del__(self):
         self.unload_model()
 
-    def _query_server(self, prompt, max_tokens=300, temperature=0.0, repeat_penalty=1.0, stop=None):
+    def _query_server(self, prompt, max_tokens=300, temperature=0.0, repeat_penalty=1.0, stop=None, grammar=None, progress_callback=None):
         if stop is None:
             stop = []
         if not self.process:
             self.load_model()
             
+        print(f"\n[INFO] Начат запрос к локальной LLM (размер промпта: {len(prompt)} символов)")
         url = f"http://127.0.0.1:{self.port}/completion"
         data = {
             "prompt": prompt,
             "n_predict": max_tokens,
             "temperature": temperature,
             "repeat_penalty": repeat_penalty,
-            "stop": stop
+            "stop": stop,
+            "stream": bool(progress_callback)
         }
+        if grammar:
+            data["grammar"] = grammar
         
         req = urllib.request.Request(
             url,
@@ -122,13 +268,36 @@ class LLMHandler:
         
         try:
             with urllib.request.urlopen(req, timeout=120) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                return res_data.get('content', '')
+                import sys
+                if progress_callback:
+                    full_text = ""
+                    tokens_count = 0
+                    print("\n[LLM] ", end="", flush=True)
+                    for line in response:
+                        line_str = line.decode('utf-8').strip()
+                        if line_str.startswith("data: "):
+                            try:
+                                chunk = json.loads(line_str[6:])
+                                content = chunk.get("content", "")
+                                if content:
+                                    sys.stdout.write(content)
+                                    sys.stdout.flush()
+                                full_text += content
+                                tokens_count += 1
+                                if tokens_count % 15 == 0:
+                                    progress_callback(tokens_count)
+                            except json.JSONDecodeError:
+                                pass
+                    print()
+                    return full_text
+                else:
+                    res_data = json.loads(response.read().decode('utf-8'))
+                    return res_data.get('content', '')
         except Exception as e:
             print(f"Error querying llama-server: {e}")
             raise RuntimeError(f"Ошибка обращения к ИИ-серверу: {e}")
 
-    def analyze_text(self, text, page_num, retry=0):
+    def analyze_text(self, text, page_num, retry=0, progress_callback=None):
         prompt = f"""<|im_start|>system
 Ты — строгий робот-анализатор. Твоя задача — извлечь реквизиты документа из его текста (полученного через OCR).
 Исправь опечатки OCR в именах и названиях. Выведи результат СТРОГО в формате XML-тегов.
@@ -136,7 +305,7 @@ class LLMHandler:
 
 ВАЖНО:
 1. Стороны (<parties>) — извлеки краткие названия организаций и ФИО граждан. Обязательно исключи ИНН, ОГРН, адреса, должности, слова "именуемый в дальнейшем".
-2. Тип (<doc_type>) — одно слово классифицирующее документ (например: Договор, Акт, Соглашение, Приложение, Справка, Накладная).
+2. Тип (<doc_type>) — ПОЛНОЕ ДОСЛОВНОЕ наименование (заголовок) документа как в тексте. Обязательно включай все относящиеся к заголовку приписки (например: "к Приложению №1...", "к Договору...", "на объект недвижимости"). НЕ сокращай заголовок до одного слова! (например: "Акт сдачи-приемки оказанных услуг к Приложению №15 от 01.01.2024 г. к Договору разработки", "Выписка из ЕГРН об основных характеристиках и зарегистрированных правах").
 3. Номер (<doc_number>) — только короткий номер самого документа (после знака № или слова "номер" в заголовке). Игнорируй банковские счета, ИНН, ОГРН, ОГРНИП. Если номера нет, пиши "-".
 4. Дата (<doc_date>) — дата подписания документа. Переведи её в числовой формат ДД.ММ.ГГГГ. Если даты нет, пиши "-".
 5. Игнорируй номера и даты договоров-оснований, упоминаемых в тексте документа. Нужны только реквизиты самого документа.
@@ -154,7 +323,7 @@ class LLMHandler:
 <|im_start|>assistant
 <metadata>
 <parties>ИП Петров П.П., ООО "Ромашка"</parties>
-<doc_type>Акт</doc_type>
+<doc_type>Акт выполненных работ</doc_type>
 <doc_number>4</doc_number>
 <doc_date>12.04.2025</doc_date>
 <confidence>100</confidence>
@@ -180,19 +349,19 @@ class LLMHandler:
 {text[:4000]}
 <|im_end|>
 <|im_start|>assistant
-<metadata>
-<parties>"""
+"""
 
         try:
             generated_text = self._query_server(
                 prompt,
                 max_tokens=300,
                 temperature=0.0,
-                stop=["<|im_end|>", "</metadata>"]
+                stop=["<|im_end|>"],
+                grammar=METADATA_GRAMMAR,
+                progress_callback=progress_callback
             )
             
-            # Восстанавливаем и очищаем структуру
-            response_text = "<metadata>\n<parties>" + generated_text.strip()
+            response_text = generated_text.strip()
             if not response_text.endswith("</metadata>"):
                 response_text += "\n</metadata>"
             
@@ -218,108 +387,19 @@ class LLMHandler:
             nums = re.findall(r'\d+', confidence_str)
             confidence_score = int(nums[0]) if nums else 0
             
-            # Форматирование сторон
-            def format_parties(text):
-                if not text or text == "-": return ""
-                text = re.sub(r'(?i)общество\s+с\s+ограниченной\s+ответственностью', 'ООО', text)
-                text = re.sub(r'(?i)публичное\s+акционерное\s+общество', 'ПАО', text)
-                text = re.sub(r'(?i)акционерное\s+общество', 'АО', text)
-                text = re.sub(r'(?i)индивидуальный\s+предприниматель', 'ИП', text)
-                
-                text = re.sub(r'(?i)\(?[^,;()]*\b(именуемое в дальнейшем|именуемый в дальнейшем|именуемое|именуемый|именуемая)\b[^,;()]*\)?', '', text)
-                text = re.sub(r'(?i)\(?[^,;()]*\b(заказчик|исполнитель|покупатель|поставщик|подрядчик|арендатор|арендодатель|сторона)\b[^,;()]*\)?', '', text)
-                text = re.sub(r'(?i)\(?[^,;()]*\b(генеральный\s+директор|директор|в лице|действующего на основании)\b[^,;()]*\)?', '', text)
-                text = re.sub(r'(?i)ОГРНИП\s*\d*', '', text)
-                text = re.sub(r'(?i)ОГРН\s*\d*', '', text)
-                text = re.sub(r'(?i)ОГРИП\s*\d*', '', text)
-                text = re.sub(r'(?i)ИНН\s*\d*', '', text)
-                text = re.sub(r'(?i)\(ИНН[^)]*\)', '', text)
-                text = re.sub(r'(?i)\(ОГРНИП[^)]*\)', '', text)
-                
-                text = re.sub(r'\d{10,}', '', text)
-                text = re.sub(r'\(\s*\)', '', text)
-                text = re.sub(r'[;]', ',', text)
-                text = re.sub(r',\s*,', ',', text)
-                text = re.sub(r'^\s*,\s*|\s*,\s*$', '', text)
-                
-                if not text.strip(): return "-"
-                
-                parts = [p.strip() for p in text.split(',') if p.strip()]
-                clean_parts = []
-                seen = set()
-                for p in parts:
-                    if p.lower().startswith('и '):
-                        p = p[2:].strip()
-                    p = re.sub(r'(?i)\s+ОГРИП\s*$', '', p)
-                    p = re.sub(r'(?i)\s+ОГРНИП\s*$', '', p)
-                    p = re.sub(r'(?i)\s+ОГРН\s*$', '', p)
-                    
-                    if len(p) > 2 and len(p) < 80 and not p.lower().startswith('с одной стороны') and not p.lower().startswith('с другой стороны'):
-                        if p not in seen:
-                            seen.add(p)
-                            clean_parts.append(p)
-                
-                result = "_".join(clean_parts)
-                return result if result else "-"
-
             parties = format_parties(parties_raw)
-            
-            first_word_match = re.search(r'^([А-Яа-яЁёA-Za-z]+)', doc_type)
-            if first_word_match:
-                raw_type = first_word_match.group(1).capitalize()
-            else:
-                raw_type = "Документ"
-            raw_type = raw_type.replace('N&', '№').replace('Ng', '№').replace('N@', '№')
-            
-            date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', doc_date)
-            clean_date = f"{date_match.group(1)}.{date_match.group(2)}.{date_match.group(3)}" if date_match else "-"
-            
-            if clean_date == "-":
-                matches = []
-                for m in re.finditer(r'\b(\d{1,2})\.(\d{2})\.(\d{2,4})\b', text):
-                    day = int(m.group(1))
-                    month = m.group(2)
-                    year = m.group(3)
-                    if len(year) == 2:
-                        year = "20" + year
-                    matches.append((m.start(), f"{day:02d}.{month}.{year}"))
-                    
-                months_ru = {
-                    "января": "01", "февраля": "02", "марта": "03", "апреля": "04",
-                    "мая": "05", "июня": "06", "июля": "07", "августа": "08",
-                    "сентября": "09", "октября": "10", "ноября": "11", "декабря": "12"
-                }
-                months_pattern = "|".join(months_ru.keys())
-                for m in re.finditer(fr'\b(\d{{1,2}})\s+({months_pattern})\s+(\d{{2,4}})\b', text, re.IGNORECASE):
-                    day = int(m.group(1))
-                    month = months_ru[m.group(2).lower()]
-                    year = m.group(3)
-                    if len(year) == 2:
-                        year = "20" + year
-                    matches.append((m.start(), f"{day:02d}.{month}.{year}"))
-                
-                if matches:
-                    matches.sort(key=lambda x: x[0])
-                    clean_date = matches[0][1]
+            raw_type = clean_doc_type(doc_type)
+            clean_date = clean_doc_date(doc_date, text)
             
             full_parts = []
-            full_type = raw_type
-            if raw_type.lower() == "акт":
-                full_type = "Акт выполненных работ"
-            elif raw_type.lower() == "договор":
-                full_type = "Договор"
-            elif raw_type.lower() == "соглашение":
-                full_type = "Дополнительное соглашение"
-            elif raw_type.lower() == "накладная":
-                full_type = "Товарная накладная"
-                
-            full_parts.append(full_type)
+            full_parts.append(raw_type)
             if doc_number and doc_number != "-":
                 clean_num = doc_number.replace("№", "").replace("номер", "").replace("No", "").strip()
-                if clean_num:
+                if clean_num and f"№{clean_num}" not in raw_type.replace(" ", ""):
                     full_parts.append(f"№{clean_num}")
             if clean_date and clean_date != "-":
-                full_parts.append(f"от {clean_date}")
+                if clean_date not in raw_type:
+                    full_parts.append(f"от {clean_date}")
             full_name = " ".join(full_parts)
             
             return {
@@ -340,7 +420,7 @@ class LLMHandler:
                 "confidence_score": 0
             }
 
-    def is_new_document(self, text, page_num):
+    def is_new_document(self, text, page_num, progress_callback=None):
         """Проверяет, начинается ли новый документ на текущей странице."""
         clean_text = text[:2000]
         clean_text = re.sub(r'#+\s*', '', clean_text)
@@ -348,6 +428,7 @@ class LLMHandler:
         clean_text = re.sub(r'[-:]{3,}', ' ', clean_text)
         clean_text = re.sub(r'\s+', ' ', clean_text).strip()
             
+        print(f"[DEBUG] is_new_document: Формирование промпта (длина чистого текста: {len(clean_text)})")
         prompt = f"""<|im_start|>system
 Ты — эксперт по анализу структуры юридических документов. Твоя задача — определить, начинается ли на данной странице НОВЫЙ документ (например, Акт, Договор, Соглашение, Справка, Накладная).
 Выведи ответ СТРОГО в формате XML-тегов:
@@ -383,12 +464,15 @@ class LLMHandler:
 <|im_start|>assistant
 """
         try:
+            print("[DEBUG] is_new_document: Запрос к _query_server...")
             raw_response = self._query_server(
                 prompt,
                 max_tokens=100,
                 temperature=0.0,
-                stop=["<|im_end|>", "</split>"]
+                stop=["<|im_end|>", "</split>"],
+                progress_callback=progress_callback
             )
+            print(f"[DEBUG] is_new_document: Получен ответ от сервера: {repr(raw_response)}")
             if not raw_response.endswith("</split>") and "</split>" not in raw_response:
                 raw_response += "</split>"
             response_clean = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip().lower()
@@ -397,7 +481,7 @@ class LLMHandler:
             print(f"Error in is_new_document LLM call: {e}")
             return False
 
-    def proofread_text(self, raw_text):
+    def proofread_text(self, raw_text, progress_callback=None):
         """Исправляет ошибки OCR."""
         prompt = f"""<|im_start|>system
 Ты — профессиональный корректор. Твоя задача исправить опечатки распознавания текста (OCR), убрать лишние переносы строк внутри абзацев и исправить лишние пробелы.
@@ -412,8 +496,9 @@ class LLMHandler:
                 prompt,
                 max_tokens=2048,
                 temperature=0.1,
-                repeat_penalty=1.15,
-                stop=["<|im_end|>", "user"]
+                repeat_penalty=1.0,
+                stop=["<|im_end|>", "user"],
+                progress_callback=progress_callback
             )
             response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL).strip()
             

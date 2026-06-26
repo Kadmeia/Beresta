@@ -1,11 +1,59 @@
 import os
 import webview
 import json
+import re
 from .model_manager import ModelManager
 from .pdf_processor import PDFProcessor
 from .llm_handler import LLMHandler
 from .docx_processor import DocxProcessor
 from .layout_processor import LayoutProcessor
+
+def is_new_document_start(text):
+    print("[DEBUG] is_new_document_start: начало")
+    lines = text[:1500].split('\n')
+    keywords = [
+        'ДОГОВОР', 'АКТ', 'ПРИЛОЖЕНИЕ', 'СОГЛАШЕНИЕ', 'СЧЕТ', 'УПД', 
+        'СПРАВКА', 'ДОВЕРЕННОСТЬ', 'ЗАЯВЛЕНИЕ', 'ПРИКАЗ', 'КОНТРАКТ',
+        'НАКЛАДНАЯ', 'РЕШЕНИЕ', 'ЗАКЛЮЧЕНИЕ', 'ПРОТОКОЛ', 'ВЫПИСКА', 'ПАСПОРТ', 'ЧЕК'
+    ]
+    
+    kw_patterns = {}
+    for kw in keywords:
+        spaced_kw = r'\s*'.join(list(kw))
+        pattern = r'\b(' + spaced_kw + r')'
+        kw_patterns[kw] = re.compile(pattern)
+
+    print(f"[DEBUG] is_new_document_start: подготовлено {len(lines)} строк для проверки")
+    for i, line in enumerate(lines):
+        line = line.strip().upper()
+        if not line:
+            continue
+        
+        word_count = len(line.split())
+        print(f"[DEBUG] Проверка строки {i}: '{line[:50]}...' (слов: {word_count})")
+        
+        for kw, pattern in kw_patterns.items():
+            match = pattern.search(line)
+            if match:
+                print(f"[DEBUG] Найдено ключевое слово: {kw}")
+                if word_count <= 10:
+                    return True
+                if match.start(1) <= 15 and word_count <= 25:
+                    return True
+                    
+    print("[DEBUG] is_new_document_start: конец (False)")
+    return False
+
+def _lock(func):
+    def wrapper(self, *args, **kwargs):
+        if self.is_processing:
+            return {"error": "Система уже обрабатывает другой запрос. Дождитесь завершения."} if func.__name__ == "process_files" else [] if func.__name__ == "save_documents" else False
+        self.is_processing = True
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            self.is_processing = False
+    return wrapper
 
 class Api:
     def __init__(self):
@@ -32,17 +80,6 @@ class Api:
             except Exception as e:
                 print(f"Error loading OCR engine from config: {e}")
 
-
-    def _lock(func):
-        def wrapper(self, *args, **kwargs):
-            if self.is_processing:
-                return {"error": "Система уже обрабатывает другой запрос. Дождитесь завершения."} if func.__name__ == "process_files" else [] if func.__name__ == "save_documents" else False
-            self.is_processing = True
-            try:
-                return func(self, *args, **kwargs)
-            finally:
-                self.is_processing = False
-        return wrapper
 
     def set_window(self, window):
         self.window = window
@@ -171,6 +208,10 @@ class Api:
     def check_model(self):
         """Called by frontend on startup. Returns true if active model and engine exist."""
         active = self.model_manager.get_active_model_type()
+        if active == "smolagents_local":
+            return True
+        if hasattr(self.model_manager, 'gemini_models') and active in self.model_manager.gemini_models:
+            return True
         model_exists = self.model_manager.check_model_exists(active)
         server_exists = self.model_manager.check_llama_server_exists()
         return model_exists and server_exists
@@ -184,9 +225,45 @@ class Api:
                 "installed": self.model_manager.check_model_exists(m_type) and server_exists,
                 "active": m_type == active
             }
+        if hasattr(self.model_manager, 'gemini_models'):
+            for m_type in self.model_manager.gemini_models:
+                status[m_type] = {
+                    "installed": True,
+                    "active": m_type == active
+                }
+        status["smolagents_local"] = {
+            "installed": True,
+            "active": active == "smolagents_local"
+        }
         return status
         
+    def get_gemini_config(self):
+        return self.model_manager.get_gemini_config()
+        
+    def save_gemini_config(self, api_key, model):
+        self.model_manager.set_gemini_config(api_key, model)
+        return True
+
+    def get_ollama_config(self):
+        return self.model_manager.get_ollama_config()
+
+    def save_ollama_config(self, model, base_url):
+        self.model_manager.set_ollama_config(model, base_url)
+        return True
+        
     def set_active_model(self, model_type):
+        if hasattr(self.model_manager, 'gemini_models') and model_type in self.model_manager.gemini_models:
+            self.model_manager.set_active_model_type(model_type)
+            if self.llm_handler:
+                self.llm_handler.unload_model()
+                self.llm_handler = None
+            return True
+        if model_type == "smolagents_local":
+            self.model_manager.set_active_model_type(model_type)
+            if self.llm_handler:
+                self.llm_handler.unload_model()
+                self.llm_handler = None
+            return True
         if model_type in self.model_manager.models and self.model_manager.check_model_exists(model_type):
             self.model_manager.set_active_model_type(model_type)
             if self.llm_handler:
@@ -298,19 +375,25 @@ class Api:
 
         # Step 1: Run OCR/text extraction on all files and save page texts in memory
         all_files_pages = []
-        for path in file_paths:
-            self.send_status(f"Извлекаем текст: {os.path.basename(path)}...")
+        total_files = len(file_paths)
+        for idx, path in enumerate(file_paths, 1):
+            prefix = f"[{idx}/{total_files}]"
+            self.send_status(f"{prefix} Извлекаем текст: {os.path.basename(path)}...")
+            
+            def status_wrapper(msg):
+                self.send_status(f"{prefix} {msg}")
+
             try:
                 is_docx = path.lower().endswith('.docx')
                 engine = self.pdf_processor.ocr_engine
                 
                 if engine in ['docling', 'ppstructure'] and not is_docx:
-                    pages_text = self.layout_processor.extract_text(path, engine, self.send_status)
+                    pages_text = self.layout_processor.extract_text(path, engine, status_wrapper)
                 else:
                     if is_docx:
-                        pages_text = self.docx_processor.extract_text(path, self.send_status)
+                        pages_text = self.docx_processor.extract_text(path, status_wrapper)
                     else:
-                        pages_text = self.pdf_processor.extract_text(path, self.send_status)
+                        pages_text = self.pdf_processor.extract_text(path, status_wrapper)
                         
                 all_files_pages.append({
                     "path": path,
@@ -318,7 +401,13 @@ class Api:
                     "pages_text": pages_text
                 })
             except Exception as e:
+                import traceback
+                print(f"Exception during OCR extraction for {path}: {e}")
+                traceback.print_exc()
                 self.send_status(f"Ошибка извлечения текста {os.path.basename(path)}: {e}")
+                
+        if not all_files_pages:
+            return [{"error": "Не удалось извлечь текст ни из одного документа. Проверьте консоль для подробностей."}]
                 
         # Step 2: Unload OCR models from RAM
         self.send_status("Освобождаем память от OCR движка...")
@@ -329,65 +418,62 @@ class Api:
             print(f"Error unloading OCR: {e}")
 
         # Step 3: Run LLM-based analysis page-by-page
+        active = self.model_manager.get_active_model_type()
+        is_gemini = hasattr(self.model_manager, 'gemini_models') and active in self.model_manager.gemini_models
+
+        if is_gemini:
+            return self.process_documents_bulk_gemini(all_files_pages, mode, extract_settings)
+
+        if active == "smolagents_local":
+            return self.process_documents_smolagents(all_files_pages, mode, extract_settings)
+
         if not self.llm_handler:
-            active = self.model_manager.get_active_model_type()
             if not self.model_manager.check_model_exists(active):
                 return {"error": "Модель не найдена. Пожалуйста, скачайте модель."}
             self.llm_handler = LLMHandler(self.model_manager.get_model_path(active))
 
-        import re
-        def is_new_document_start(text):
-            lines = text[:1500].split('\n')
-            keywords = [
-                'ДОГОВОР', 'АКТ', 'ПРИЛОЖЕНИЕ', 'СОГЛАШЕНИЕ', 'СЧЕТ', 'УПД', 
-                'СПРАВКА', 'ДОВЕРЕННОСТЬ', 'ЗАЯВЛЕНИЕ', 'ПРИКАЗ', 'КОНТРАКТ',
-                'НАКЛАДНАЯ', 'РЕШЕНИЕ', 'ЗАКЛЮЧЕНИЕ', 'ПРОТОКОЛ', 'ВЫПИСКА', 'ПАСПОРТ', 'ЧЕК'
-            ]
-            
-            kw_patterns = {}
-            for kw in keywords:
-                spaced_kw = r'\s*'.join(list(kw))
-                pattern = r'\b(' + spaced_kw + r')'
-                kw_patterns[kw] = re.compile(pattern)
-
-            for i, line in enumerate(lines):
-                line = line.strip().upper()
-                if not line:
-                    continue
-                
-                word_count = len(line.split())
-                
-                for kw, pattern in kw_patterns.items():
-                    match = pattern.search(line)
-                    if match:
-                        if word_count <= 10:
-                            return True
-                        if match.start(1) <= 15 and word_count <= 25:
-                            return True
-            return False
-
         results = []
-        for file_data in all_files_pages:
+        total_files_analysis = len(all_files_pages)
+        total_pages_all_files = sum(len(fd.get("pages_text", [])) for fd in all_files_pages)
+        current_page_overall = 0
+        
+        for f_idx, file_data in enumerate(all_files_pages, 1):
             path = file_data["path"]
             is_docx = file_data["is_docx"]
             pages_text = file_data["pages_text"]
             
-            self.send_status(f"Анализируем грамоту: {os.path.basename(path)}...")
+            prefix = f"[{f_idx}/{total_files_analysis}]"
+            
+            # Show a generic starting percent for the document if no pages yet
+            start_percent = int((current_page_overall / max(total_pages_all_files, 1)) * 95)
+            self.send_status(f"{prefix} Анализируем грамоту: {os.path.basename(path)}... {start_percent}%")
+            print(f"\n[INFO] Начат анализ документа: {path}")
             try:
                 current_doc = None
                 
                 for p in pages_text:
+                    current_page_overall += 1
+                    percent = int((current_page_overall / max(total_pages_all_files, 1)) * 95)
                     page_num = p['page_num']
                     text = p['text'][:3000]
                     
+                    print(f"[INFO] Обработка страницы {page_num}/{len(pages_text)}...")
+                    
+                    is_candidate = False
                     if mode == "rename":
                         is_new = False
                     elif mode == "extract":
                         is_candidate = extract_settings.get('split', True) and is_new_document_start(text)
-                        is_new = is_candidate and self.llm_handler.is_new_document(text, page_num)
+                        is_new = is_candidate and self.llm_handler.is_new_document(
+                            text, page_num,
+                            progress_callback=lambda tokens: self.send_status(f"{prefix} Проверка границ документа (стр. {page_num})... {percent}% ({tokens} токенов)")
+                        )
                     else:
                         is_candidate = is_new_document_start(text)
-                        is_new = is_candidate and self.llm_handler.is_new_document(text, page_num)
+                        is_new = is_candidate and self.llm_handler.is_new_document(
+                            text, page_num,
+                            progress_callback=lambda tokens: self.send_status(f"{prefix} Проверка границ документа (стр. {page_num})... {percent}% ({tokens} токенов)")
+                        )
                     
                     print(f"DEBUG PIPELINE: page_num={page_num}, is_candidate={is_candidate}, is_new={is_new}, text_start={repr(text[:200])}")
                     
@@ -398,20 +484,29 @@ class Api:
                         text = text.replace('N@', '№').replace('N?', '№')
                         
                         if mode == "extract" and extract_settings.get("use_ai", True):
-                            self.send_status(f"ИИ коррекция текста (стр. {page_num})...")
-                            proofread_text = self.llm_handler.proofread_text(p['text'])
+                            print(f"[INFO] Запуск ИИ коррекции текста для страницы {page_num}...")
+                            self.send_status(f"{prefix} ИИ коррекция текста (стр. {page_num})... {percent}%")
+                            proofread_text = self.llm_handler.proofread_text(
+                                p['text'],
+                                progress_callback=lambda tokens: self.send_status(f"{prefix} ИИ коррекция (стр. {page_num})... {percent}% (чтение: {tokens} токенов)")
+                            )
                             text = proofread_text[:3000]
                             p['text'] = proofread_text
                         
-                        self.send_status(f"Определение реквизитов (стр. {page_num})...")
-                        analysis = self.llm_handler.analyze_text(text, page_num, retry=retries)
+                        print(f"[INFO] Запуск извлечения реквизитов (analyze_text) для страницы {page_num}...")
+                        self.send_status(f"{prefix} Определение реквизитов (стр. {page_num})... {percent}%")
+                        analysis = self.llm_handler.analyze_text(
+                            text, page_num, retry=retries,
+                            progress_callback=lambda tokens: self.send_status(f"{prefix} Анализ ИИ (стр. {page_num})... {percent}% (обработано {tokens} токенов)")
+                        )
+                        print(f"[INFO] Результат анализа: {analysis}")
                         
-                        while (analysis.get('confidence_score', 0) < 85 or analysis.get('short_name') == 'Документ') and retries < max_retries:
+                        while (analysis.get('short_name') == 'Документ' or not analysis.get('date') or analysis.get('date') == '-') and retries < max_retries:
                             retries += 1
-                            self.send_status(f"Перепроверка ИИ (стр. {page_num}), попытка {retries}...")
+                            self.send_status(f"{prefix} Перепроверка ИИ (стр. {page_num}), попытка {retries}... {percent}%")
                             
                             if retries == 1:
-                                self.send_status(f"Очистка текста OCR (стр. {page_num})...")
+                                self.send_status(f"{prefix} Очистка текста OCR (стр. {page_num})... {percent}%")
                                 try:
                                     ocr_text = self.pdf_processor.force_ocr_page(path, page_num)
                                     if len(ocr_text.strip()) > 20:
@@ -423,9 +518,10 @@ class Api:
                                 except Exception as e:
                                     print(f"Force OCR failed: {e}")
                             
-                            expanded_text = p['text'][:3000 + (retries * 500)]
-                            expanded_text = expanded_text.replace('N@', '№').replace('N?', '№')
-                            analysis = self.llm_handler.analyze_text(expanded_text, page_num, retry=retries)
+                            analysis = self.llm_handler.analyze_text(
+                                text, page_num, retry=retries,
+                                progress_callback=lambda tokens: self.send_status(f"{prefix} Перепроверка ИИ (стр. {page_num}), попытка {retries}... {percent}% ({tokens} токенов)")
+                            )
 
                         b64_image = ""
                         if not is_docx:
@@ -445,7 +541,7 @@ class Api:
                             current_doc['end_page'] = page_num - 1
                             results.append(current_doc)
                             
-                        final_confidence = analysis.get('confidence_score', 0) >= 85
+                        final_confidence = (analysis.get('short_name') != 'Документ' and analysis.get('date') not in [None, '', '-'])
                         current_doc = {
                             "start_page": page_num,
                             "end_page": page_num,
@@ -465,8 +561,11 @@ class Api:
                             current_doc['actual_page_count'] = current_doc.get('actual_page_count', 0) + 1
                             if mode == "extract":
                                 if extract_settings.get("use_ai", True):
-                                    self.send_status(f"ИИ коррекция текста (стр. {page_num})...")
-                                    proofread_text = self.llm_handler.proofread_text(p['text'])
+                                    self.send_status(f"ИИ коррекция текста (стр. {page_num})... {percent}%")
+                                    proofread_text = self.llm_handler.proofread_text(
+                                        p['text'],
+                                        progress_callback=lambda tokens: self.send_status(f"ИИ коррекция (стр. {page_num})... {percent}% (чтение: {tokens} токенов)")
+                                    )
                                     p['text'] = proofread_text
                                 current_doc['text'] += '\n\n' + p['text']
                             
@@ -475,9 +574,185 @@ class Api:
                     results.append(current_doc)
                     
             except Exception as e:
+                import traceback
+                print(f"[ERROR] Exception during analysis loop for {path}: {e}")
+                traceback.print_exc()
                 self.send_status(f"Ошибка при обработке {os.path.basename(path)}: {e}")
 
+        self.send_status("Ожидание проверки... 100%")
+        return results
+
+    def process_documents_smolagents(self, all_files_pages, mode, extract_settings):
+        from backend.smolagents_workflow import SmolAgentsWorkflow
+        
+        ollama_config = self.model_manager.get_ollama_config()
+        results = []
+        
+        total_files = len(all_files_pages)
+        for f_idx, file_data in enumerate(all_files_pages, 1):
+            path = file_data["path"]
+            is_docx = file_data["is_docx"]
+            pages_text = file_data["pages_text"]
+            
+            prefix = f"[{f_idx}/{total_files}]"
+            self.send_status(f"{prefix} Запуск SmolAgents для {os.path.basename(path)}...")
+            
+            try:
+                workflow = SmolAgentsWorkflow(
+                    file_path=path,
+                    pages_text=pages_text,
+                    mode=mode,
+                    extract_settings=extract_settings,
+                    ollama_config=ollama_config,
+                    status_callback=lambda msg: self.send_status(f"{prefix} {msg}")
+                )
+                file_results = workflow.run()
+                results.extend(file_results)
+            except Exception as e:
+                self.send_status(f"{prefix} Ошибка SmolAgents: {e}")
+                print(f"SmolAgents error processing file {path}: {e}")
+                
         self.send_status("Ожидание проверки...")
+        return results
+
+    def process_documents_bulk_gemini(self, all_files_pages, mode, extract_settings):
+        import uuid
+        active_model = self.model_manager.get_active_model_type()
+        gemini_config = self.model_manager.get_gemini_config()
+        if not gemini_config.get("api_key"):
+            return {"error": "API ключ Gemini не настроен. Пожалуйста, введите его в настройках."}
+            
+        try:
+            from backend.llm_handler import GeminiHandler
+            gemini_handler = GeminiHandler(gemini_config["api_key"], active_model)
+        except Exception as e:
+            return {"error": f"Ошибка инициализации Gemini: {e}"}
+
+        documents_to_analyze = []
+
+        total_files = len(all_files_pages)
+        for f_idx, file_data in enumerate(all_files_pages, 1):
+            path = file_data["path"]
+            is_docx = file_data["is_docx"]
+            pages_text = file_data["pages_text"]
+            
+            prefix = f"[{f_idx}/{total_files}]"
+            self.send_status(f"{prefix} Формируем блоки для Gemini: {os.path.basename(path)}...")
+            
+            current_doc = None
+            for p in pages_text:
+                page_num = p['page_num']
+                text = p['text'][:3000]
+                
+                if mode == "rename":
+                    is_new = False
+                else:
+                    is_candidate = extract_settings.get('split', True) if mode == "extract" else True
+                    is_new = is_candidate and is_new_document_start(text)
+                
+                if is_new or current_doc is None:
+                    b64_image = ""
+                    if not is_docx:
+                        try:
+                            import fitz
+                            import base64
+                            tmp_doc = fitz.open(path)
+                            tmp_page = tmp_doc[page_num - 1]
+                            pix = tmp_page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                            img_data = pix.tobytes("jpeg", 80)
+                            b64_image = base64.b64encode(img_data).decode("utf-8")
+                            tmp_doc.close()
+                        except Exception as e:
+                            pass
+                            
+                    if current_doc:
+                        current_doc['end_page'] = page_num - 1
+                        documents_to_analyze.append(current_doc)
+                        
+                    current_doc = {
+                        "doc_id": str(uuid.uuid4()),
+                        "start_page": page_num,
+                        "end_page": page_num,
+                        "actual_page_count": 1,
+                        "is_docx": is_docx,
+                        "original_file": path,
+                        "text": p['text'],
+                        "image_b64": b64_image,
+                        "analysis_text": text
+                    }
+                else:
+                    if current_doc:
+                        current_doc['end_page'] = page_num
+                        current_doc['actual_page_count'] += 1
+                        if mode == "extract":
+                            current_doc['text'] += '\n\n' + p['text']
+            
+            if current_doc:
+                current_doc['end_page'] = pages_text[-1]['page_num'] if pages_text else current_doc['end_page']
+                documents_to_analyze.append(current_doc)
+
+        self.send_status("Gemini API: Анализ документов...")
+        batch_size = 20
+        total_batches = (len(documents_to_analyze) + batch_size - 1) // batch_size
+        gemini_results = {}
+        try:
+            for i in range(0, len(documents_to_analyze), batch_size):
+                batch_idx = (i // batch_size) + 1
+                self.send_status(f"Gemini API: Анализ документов (пакет {batch_idx} из {total_batches})...")
+                batch = documents_to_analyze[i:i+batch_size]
+                batch_input = [{"doc_id": item["doc_id"], "text": item["analysis_text"]} for item in batch]
+                res_list = gemini_handler.analyze_documents_bulk(batch_input)
+                for res in res_list:
+                    gemini_results[res.get("doc_id")] = res
+        except Exception as e:
+            print(f"Error during bulk Gemini processing: {e}")
+            return {"error": f"Ошибка Gemini API: {str(e)}"}
+
+        results = []
+        from backend.llm_handler import format_parties, clean_doc_type, clean_doc_date
+
+        for item in documents_to_analyze:
+            d_id = item["doc_id"]
+            analysis = gemini_results.get(d_id, {
+                "parties": "-", "doc_type": "Документ", "number": "-", "date": "-"
+            })
+            
+            raw_type = clean_doc_type(analysis.get("doc_type", "Документ"))
+            doc_number = analysis.get("number", "-")
+            clean_date = clean_doc_date(analysis.get("date", "-"), item["text"])
+            parties = format_parties(analysis.get("parties", "-"))
+            
+            full_parts = []
+            full_type = raw_type
+            full_parts.append(full_type)
+            if doc_number and doc_number != "-":
+                clean_num = doc_number.replace("№", "").replace("номер", "").replace("No", "").strip()
+                if clean_num:
+                    full_parts.append(f"№{clean_num}")
+            if clean_date and clean_date != "-":
+                full_parts.append(f"от {clean_date}")
+            full_name = " ".join(full_parts)
+
+            doc_item = {
+                "original_file": item["original_file"],
+                "start_page": item["start_page"],
+                "end_page": item["end_page"],
+                "actual_page_count": item["actual_page_count"],
+                "is_docx": item["is_docx"],
+                "parties": parties,
+                "short_name": raw_type,
+                "full_name": full_name,
+                "date": clean_date,
+                "confidence": True,
+                "isMerged": False,
+                "isActive": True,
+                "isManualEdit": False,
+                "new_name": "",
+                "text": item["text"],
+                "image_b64": item["image_b64"]
+            }
+            results.append(doc_item)
+            
         return results
 
     @_lock
@@ -501,6 +776,8 @@ class Api:
                 # Construct new name based on frontend settings
                 # We assume frontend passes the finalized 'new_name' field
                 new_name = item.get('new_name')
+                if new_name:
+                    new_name = re.sub(r'(?i)\.(pdf|docx)$', '', new_name)
                 if not new_name:
                     # fallback
                     new_name = f"{item.get('short_name', 'Документ')} {item.get('date', '')}".strip()

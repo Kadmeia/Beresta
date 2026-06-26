@@ -13,8 +13,16 @@ class ModelManager:
         # Example models
         self.models = {
             "fast": {"repo_id": "Vikhrmodels/QVikhr-3-4B-Instruction-GGUF", "filename": "QVikhr-3-4B-Instruction-Q4_K_M.gguf"},
-            "accurate": {"repo_id": "RichardErkhov/Defetya_-_qwen-4B-saiga-gguf", "filename": "qwen-4B-saiga.Q4_K_M.gguf"}
+            "accurate": {"repo_id": "RichardErkhov/Defetya_-_qwen-4B-saiga-gguf", "filename": "qwen-4B-saiga.Q4_K_M.gguf"},
+            "accurate_9b": {"repo_id": "unsloth/Qwen3.5-9B-GGUF", "filename": "Qwen3.5-9B-Q4_K_M.gguf"}
         }
+        
+        self.gemini_models = {
+            "gemini-2.5-flash": "Google Gemini 2.5 Flash (Рекомендуется)",
+            "gemini-2.5-flash-lite": "Google Gemini 2.5 Flash-Lite (Экономичный)",
+            "gemini-1.5-flash": "Google Gemini 1.5 Flash (Устаревшая)"
+        }
+
         
         # Migrate old model if it exists
         old_model = os.path.join(self.model_dir, 'model.gguf')
@@ -35,6 +43,10 @@ class ModelManager:
                 with open(self.config_path, 'r') as f:
                     config = json.load(f)
                     active = config.get("active_model", "fast")
+                    if active in self.gemini_models:
+                        return active
+                    if active == "smolagents_local":
+                        return active
                     if active in self.models and self.check_model_exists(active):
                         return active
             except:
@@ -47,7 +59,7 @@ class ModelManager:
         return "fast"
         
     def set_active_model_type(self, model_type):
-        if model_type in self.models:
+        if model_type in self.models or model_type in self.gemini_models or model_type == "smolagents_local":
             config = {}
             if os.path.exists(self.config_path):
                 try:
@@ -58,6 +70,59 @@ class ModelManager:
             config["active_model"] = model_type
             with open(self.config_path, 'w') as f:
                 json.dump(config, f)
+
+    def get_gemini_config(self):
+        config = {}
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+            except:
+                pass
+        return {
+            "api_key": config.get("gemini_api_key", ""),
+            "model": config.get("selected_gemini_model", "gemini-2.5-flash")
+        }
+
+    def set_gemini_config(self, api_key, model):
+        config = {}
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+            except:
+                pass
+        config["gemini_api_key"] = api_key
+        if model in self.gemini_models:
+            config["selected_gemini_model"] = model
+        with open(self.config_path, 'w') as f:
+            json.dump(config, f)
+
+    def get_ollama_config(self):
+        config = {}
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+            except:
+                pass
+        return {
+            "model": config.get("ollama_model_name", "saiga:4b"),
+            "base_url": config.get("ollama_base_url", "http://localhost:11434")
+        }
+
+    def set_ollama_config(self, model, base_url):
+        config = {}
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+            except:
+                pass
+        config["ollama_model_name"] = model
+        config["ollama_base_url"] = base_url
+        with open(self.config_path, 'w') as f:
+            json.dump(config, f)
 
     def download_model(self, model_type, progress_callback=None):
         """

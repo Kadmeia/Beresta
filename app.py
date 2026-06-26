@@ -1,5 +1,22 @@
+import warnings
+try:
+    from urllib3.exceptions import NotOpenSSLWarning
+    warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
+except ImportError:
+    pass
+
 import webview
 import os
+import sys
+import threading
+import traceback
+import json
+
+# Fix proxy for httpx IPv6 parsing bug (affects huggingface_hub model downloads in Docling)
+for k in ["http_proxy", "https_proxy", "no_proxy", "NO_PROXY", "HTTP_PROXY", "HTTPS_PROXY"]:
+    if k in os.environ and "::1" in os.environ[k]:
+        os.environ[k] = os.environ[k].replace("::1", "127.0.0.1")
+
 from backend.api import Api
 
 def main():

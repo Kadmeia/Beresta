@@ -34,13 +34,7 @@ class LayoutProcessor:
             except ImportError:
                 return False
         return False
-        elif engine_name == 'ppstructure':
-            try:
-                from paddleocr import PPStructure
-                return True
-            except ImportError:
-                return False
-        return False
+
 
 
     def _run_pip_with_progress(self, packages, progress_callback):
@@ -51,26 +45,52 @@ class LayoutProcessor:
         # If running as a frozen PyInstaller app, create an external venv
         if getattr(sys, 'frozen', False):
             env_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'env')
-            python_cmd = "python3" if sys.platform != "win32" else "python"
+            
+            def find_python3():
+                paths = [
+                    '/opt/homebrew/bin/python3',
+                    '/usr/local/bin/python3',
+                    '/usr/bin/python3',
+                    '/Library/Developer/CommandLineTools/usr/bin/python3'
+                ]
+                for p in paths:
+                    if os.path.exists(p):
+                        return p
+                return "python3"
+            
+            python_cmd = find_python3() if sys.platform != "win32" else "python"
+            
+            clean_env = os.environ.copy()
+            clean_env.pop('PYTHONHOME', None)
+            clean_env.pop('PYTHONPATH', None)
+            if 'LD_LIBRARY_PATH' in clean_env:
+                clean_env.pop('LD_LIBRARY_PATH')
+            if 'DYLD_LIBRARY_PATH' in clean_env:
+                clean_env.pop('DYLD_LIBRARY_PATH')
             
             if not os.path.exists(env_dir):
                 if progress_callback: progress_callback("Создание изолированного окружения...")
-                subprocess.run([python_cmd, "-m", "venv", env_dir], check=True)
+                try:
+                    subprocess.run([python_cmd, "-m", "venv", env_dir], check=True, capture_output=True, env=clean_env)
+                except subprocess.CalledProcessError as e:
+                    raise Exception(f"Ошибка создания venv: {e.stderr.decode('utf-8', errors='ignore')}")
+                except FileNotFoundError:
+                    raise Exception(f"Python 3 не найден в системе по пути: {python_cmd}")
                 
             pip_bin = os.path.join(env_dir, 'bin', 'pip') if sys.platform != 'win32' else os.path.join(env_dir, 'Scripts', 'pip.exe')
             cmd = [pip_bin, "install"] + packages
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=clean_env, bufsize=1)
         else:
             cmd = [sys.executable, "-m", "pip", "install"] + packages
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             
         try:
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             buffer = []
             while True:
                 char = process.stdout.read(1)
                 if not char:
                     break
-                if char in ('', '
-'):
+                if char in ('\r', '\n'):
                     line = "".join(buffer).strip()
                     if line and progress_callback:
                         if "Downloading" in line or "Collecting" in line or "%" in line or "MB" in line or "kB" in line or "━" in line:

@@ -257,10 +257,6 @@
                     </div>
                 </header>
                 <div class="main-layout" style="display:flex; flex:1; overflow:hidden;">
-                    <aside class="preview-sidebar">
-                        <h3>Превью страниц</h3>
-                        <div class="page-thumbnail-container" id="preview-thumbnails"></div>
-                    </aside>
                     <main class="table-area">
                         <table class="doc-table" id="preview-table">
                             <thead>
@@ -362,7 +358,7 @@
     <div id="model-select-overlay" class="hidden opacity-0 transition-all duration-300" onclick="closeModelManager()"
         style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;">
         <div class="scale-95 transition-all duration-300" onclick="event.stopPropagation()"
-            style="background: var(--modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+            style="background: var(--modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Управление ИИ-моделями</h3>
                 <button id="close-model-btn" onclick="closeModelManager()"
@@ -373,6 +369,39 @@
                 переключаться между ними.</p>
 
             <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div id="model-card-gemini" style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
+                    <h4 style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        Google Gemini API
+                    </h4>
+                    <p style="margin: 0 0 12px 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Используйте облачные модели Gemini для максимальной скорости (не нагружает ПК).</p>
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+                        <input type="password" id="gemini-api-key" class="text-input" placeholder="Введите API ключ AIzaSy..." style="width: 100%; font-size: 0.85rem;" onchange="saveGeminiSettings()">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <select id="gemini-model-select" class="text-input" style="width: 100%; font-size: 0.85rem;" onchange="saveGeminiSettings()">
+                            <option value="gemini-2.5-flash">Google Gemini 2.5 Flash (Рекомендуется)</option>
+                            <option value="gemini-2.5-flash-lite">Google Gemini 2.5 Flash-Lite (Экономичный)</option>
+                            <option value="gemini-1.5-flash">Google Gemini 1.5 Flash (Устаревшая)</option>
+                        </select>
+                    </div>
+                    <div id="model-actions-gemini" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
+                </div>
+
+                <div id="model-card-smolagents"
+                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
+                    <h4 style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        Локальный Агент (SmolAgents + Saiga 4B)
+                    </h4>
+                    <p style="margin: 0 0 12px 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Использование локального ИИ-агента. Требуется запущенный Ollama на ПК.</p>
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="ollama-model-name" class="text-input" placeholder="Имя модели Ollama (saiga:4b)" style="width: 100%; font-size: 0.85rem;" onchange="saveOllamaSettings()">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <input type="text" id="ollama-base-url" class="text-input" placeholder="Адрес Ollama (http://localhost:11434)" style="width: 100%; font-size: 0.85rem;" onchange="saveOllamaSettings()">
+                    </div>
+                    <div id="model-actions-smolagents" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
+                </div>
+
                 <div id="model-card-fast"
                     style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
                     <h4
@@ -397,6 +426,18 @@
                     <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Идеальное
                         следование правилам и иерархии, высочайшее качество. <b>Требует от 2.5 ГБ ОЗУ</b>, отличный баланс скорости и ума.</p>
                     <div id="model-actions-accurate"
+                        style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
+                </div>
+
+                <div id="model-card-accurate_9b"
+                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
+                    <h4
+                        style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                        Qwen 3.5 9B <span
+                            style="font-size: 11px; background: var(--theme-switch-bg); padding: 2px 6px; border-radius: 4px; color: var(--text-muted);">~5.5
+                            ГБ</span></h4>
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Наиболее точная локальная модель для сложных юридических текстов. <b>Рекомендуется от 8 ГБ ОЗУ</b>.</p>
+                    <div id="model-actions-accurate_9b"
                         style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
                 </div>
             </div>
@@ -428,8 +469,8 @@
                             <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Мощная нейросеть. Читает фото со смартфона, кривые сканы. Отличная скорость и точность, но без сохранения таблиц.</div>
                         </div>
                     </label>
-                    <button id="btn-download-paddle" onclick="downloadPaddleOCR()" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~150 МБ)</button>
-                    <div id="paddle-downloaded-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
+                    <button id="btn-download-ppstructure" onclick="downloadLayoutEngine('ppstructure')" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~150 МБ)</button>
+                    <div id="ppstructure-status-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
                         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Модель скачана и готова
                     </div>
                 </div>
@@ -442,7 +483,7 @@
                             <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Самая мощная модель от IBM. Идеально читает текст и переносит сложную структуру, стили и многостраничные таблицы.</div>
                         </div>
                     </label>
-                    <button id="btn-download-docling" onclick="downloadDocling()" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~3 ГБ)</button>
+                    <button id="btn-download-docling" onclick="downloadLayoutEngine('docling')" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~3 ГБ)</button>
                     <div id="docling-status-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;"></div>
                 </div>
 
@@ -988,7 +1029,51 @@
             pywebview.api.get_models_status().then(status => {
                 let anyInstalled = false;
 
-                ['fast', 'accurate'].forEach(mType => {
+                if (window.pywebview && pywebview.api.get_gemini_config) {
+                    pywebview.api.get_gemini_config().then(config => {
+                        document.getElementById('gemini-api-key').value = config.api_key || '';
+                        if (config.model) {
+                            document.getElementById('gemini-model-select').value = config.model;
+                        }
+                        const geminiModel = document.getElementById('gemini-model-select').value;
+                        const stGemini = status[geminiModel] || { installed: true, active: false };
+                        const cardG = document.getElementById(`model-card-gemini`);
+                        const actionsG = document.getElementById(`model-actions-gemini`);
+                        if (stGemini.active) {
+                            cardG.style.borderColor = 'var(--accent)';
+                            cardG.style.background = 'rgba(45, 106, 79, 0.05)';
+                            document.documentElement.getAttribute('data-theme') === 'dark' ? cardG.style.background = 'rgba(245, 158, 11, 0.05)' : null;
+                            actionsG.innerHTML = `<span style="color: var(--accent); font-weight: bold; font-size: 0.85rem; display:flex; align-items:center; gap:4px;"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Активная модель</span>`;
+                        } else {
+                            cardG.style.borderColor = 'var(--border-color)';
+                            cardG.style.background = 'var(--container-bg)';
+                            actionsG.innerHTML = `<button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; flex: 1;" onclick="setActiveGeminiModel()">Сделать активной</button>`;
+                        }
+                    });
+                }
+
+                if (window.pywebview && pywebview.api.get_ollama_config) {
+                    pywebview.api.get_ollama_config().then(config => {
+                        document.getElementById('ollama-model-name').value = config.model || '';
+                        document.getElementById('ollama-base-url').value = config.base_url || '';
+                        
+                        const stSmol = status["smolagents_local"] || { installed: true, active: false };
+                        const cardS = document.getElementById(`model-card-smolagents`);
+                        const actionsS = document.getElementById(`model-actions-smolagents`);
+                        if (stSmol.active) {
+                            cardS.style.borderColor = 'var(--accent)';
+                            cardS.style.background = 'rgba(45, 106, 79, 0.05)';
+                            document.documentElement.getAttribute('data-theme') === 'dark' ? cardS.style.background = 'rgba(245, 158, 11, 0.05)' : null;
+                            actionsS.innerHTML = `<span style="color: var(--accent); font-weight: bold; font-size: 0.85rem; display:flex; align-items:center; gap:4px;"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Активная модель</span>`;
+                        } else {
+                            cardS.style.borderColor = 'var(--border-color)';
+                            cardS.style.background = 'var(--container-bg)';
+                            actionsS.innerHTML = `<button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; flex: 1;" onclick="setActiveOllamaModel()">Сделать активной</button>`;
+                        }
+                    });
+                }
+
+                ['fast', 'accurate', 'accurate_9b'].forEach(mType => {
                     const card = document.getElementById(`model-card-${mType}`);
                     const actionsDiv = document.getElementById(`model-actions-${mType}`);
                     const st = status[mType];
@@ -1012,8 +1097,9 @@
                     } else {
                         card.style.borderColor = 'var(--border-color)';
                         card.style.background = 'var(--container-bg)';
+                        const sizeGB = mType === 'fast' ? '2.5' : (mType === 'accurate' ? '2.5' : '5.5');
                         actionsDiv.innerHTML = `
-                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px;" onclick="startModelDownload('${mType}')">Скачать (~${mType === 'fast' ? '2.5' : '2.5'} ГБ)</button>
+                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px;" onclick="startModelDownload('${mType}')">Скачать (~${sizeGB} ГБ)</button>
                         `;
                     }
                 });
@@ -1061,6 +1147,50 @@
                 overlay.classList.add('hidden');
                 overlay.style.display = 'none';
             }, 300);
+        }
+
+        function saveGeminiSettings() {
+            const key = document.getElementById('gemini-api-key').value;
+            const model = document.getElementById('gemini-model-select').value;
+            if (window.pywebview && pywebview.api.save_gemini_config) {
+                pywebview.api.save_gemini_config(key, model).then(() => {
+                    manageModel();
+                });
+            }
+        }
+
+        function setActiveGeminiModel() {
+            const key = document.getElementById('gemini-api-key').value;
+            if (!key) {
+                alert("Пожалуйста, введите Gemini API Key.");
+                return;
+            }
+            const model = document.getElementById('gemini-model-select').value;
+            pywebview.api.save_gemini_config(key, model).then(() => {
+                pywebview.api.set_active_model(model).then(success => {
+                    if (success) manageModel();
+                });
+            });
+        }
+
+        function saveOllamaSettings() {
+            const model = document.getElementById('ollama-model-name').value.trim() || 'saiga:4b';
+            const url = document.getElementById('ollama-base-url').value.trim() || 'http://localhost:11434';
+            if (window.pywebview && pywebview.api.save_ollama_config) {
+                pywebview.api.save_ollama_config(model, url).then(() => {
+                    manageModel();
+                });
+            }
+        }
+
+        function setActiveOllamaModel() {
+            const model = document.getElementById('ollama-model-name').value.trim() || 'saiga:4b';
+            const url = document.getElementById('ollama-base-url').value.trim() || 'http://localhost:11434';
+            pywebview.api.save_ollama_config(model, url).then(() => {
+                pywebview.api.set_active_model('smolagents_local').then(success => {
+                    if (success) manageModel();
+                });
+            });
         }
 
         function setActiveModel(mType) {
@@ -1331,11 +1461,9 @@
             const tbody = document.querySelector('#preview-table tbody');
             const theadActions = document.querySelector('#preview-table thead th:nth-child(7)');
             if (theadActions) {
-                theadActions.style.display = currentAppMode === 'rename' ? 'none' : '';
+                theadActions.style.display = '';
             }
-            const thumbnailsContainer = document.getElementById('preview-thumbnails');
             tbody.innerHTML = '';
-            thumbnailsContainer.innerHTML = '';
 
             if (data.length > 0 && selectedFiles.length > 0) {
                 const filename = selectedFiles[0].split(/[\\/]/).pop();
@@ -1362,17 +1490,6 @@
                     suffix = document.getElementById('extract-suffix').value.trim();
                 }
 
-                // Рендер миниатюры
-                const thumb = document.createElement('div');
-                thumb.className = 'thumbnail-card';
-                thumb.onclick = () => openPreview(item.start_page, item.parties, isFullName ? item.full_name : item.short_name, index);
-                thumb.innerHTML = `
-                    <span style="font-size: 11px; color: ${item.confidence ? 'var(--text-muted)' : '#f59e0b'}; font-weight: 600;">${(item.short_name || 'Неизвестно').substring(0, 15)}</span>
-                    <span style="font-size: 24px; margin: 8px 0; ${item.confidence ? '' : 'opacity: 0.5;'}">📄</span>
-                    <span class="page-num">${item.start_page}${item.end_page !== item.start_page ? '-' + item.end_page : ''}</span>
-                `;
-                thumbnailsContainer.appendChild(thumb);
-
                 // Формирование начального имени
                 if (!item.isManualEdit && !item.new_name) {
                     item.new_name = generateAutoName(item, index);
@@ -1387,6 +1504,11 @@
                 tr.ondrop = (e) => handleDrop(e, index);
                 tr.ondragenter = (e) => handleDragEnter(e);
                 tr.ondragleave = (e) => handleDragLeave(e);
+                tr.ondblclick = (e) => {
+                    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
+                        openPreview(item.start_page, item.parties ? item.parties.replace(/'/g, "\\'") : '', isFullName ? item.full_name : item.short_name, index);
+                    }
+                };
                 const disabledClass = item.isActive ? '' : 'row-disabled';
                 tr.className = item.isMerged ? `row-merged ${disabledClass}` : (item.confidence ? `row-success ${disabledClass}` : `row-warning ${disabledClass}`);
 
@@ -1505,8 +1627,7 @@
             newName = newName.replace(/["]+/g, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
             if (!newName) newName = `Документ ${index + 1}`;
 
-            const originalExt = selectedFiles[0].split('.').pop().toLowerCase();
-            return newName + '.' + originalExt;
+            return newName;
         }
 
         function triggerAutoName(index) {
@@ -1868,11 +1989,15 @@
             mark.innerText = "Подготовка к загрузке...";
 
             pywebview.api.download_layout_engine(engine).then(result => {
-                currentlyDownloadingLayout = null;
-                if (result === "OK" || result === true) {
+                if (result === "Started") {
+                    // Download is running in background thread, wait for window.layoutDownloadComplete
+                    console.log("Download started in background.");
+                } else if (result === "OK" || result === true) {
+                    currentlyDownloadingLayout = null;
                     checkAllLayoutEnginesStatus();
                     checkLayoutEngine();
                 } else {
+                    currentlyDownloadingLayout = null;
                     btn.style.display = 'inline-block';
                     if (typeof result === 'string' && result !== "FAIL" && result !== "OK") {
                         mark.innerText = "Ошибка: " + result;
@@ -1890,6 +2015,29 @@
                 mark.style.color = "var(--danger)";
             });
         }
+        
+        window.layoutDownloadComplete = function(success, engine) {
+            currentlyDownloadingLayout = null;
+            const btn = document.getElementById('btn-download-' + engine);
+            const mark = document.getElementById(engine + '-status-mark');
+            if (success) {
+                if (mark) {
+                    mark.style.color = "var(--success)";
+                    mark.innerText = "Установлено!";
+                    setTimeout(() => { mark.style.display = 'none'; }, 2000);
+                }
+                checkAllLayoutEnginesStatus();
+                checkLayoutEngine();
+            } else {
+                if (btn) btn.style.display = 'inline-block';
+                if (mark) {
+                    mark.style.color = "var(--danger)";
+                    if (!mark.innerText.includes("Ошибка") && !mark.innerText.includes("Сбой")) {
+                        mark.innerText = "Ошибка при загрузке.";
+                    }
+                }
+            }
+        };
 
         // Initialize check when pywebview is ready
         window.addEventListener('pywebviewready', () => {
