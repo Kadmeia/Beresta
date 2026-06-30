@@ -1,25 +1,13 @@
 import os
 import fitz  # PyMuPDF
 from pypdf import PdfReader, PdfWriter
-import pytesseract
 from PIL import Image, ImageEnhance, ImageStat
 import io
 import re
 
 class PDFProcessor:
     def __init__(self):
-        import sys
-        if sys.platform == 'win32':
-            tess_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'tesseract')
-            exe_path = os.path.join(tess_dir, 'tesseract.exe')
-            if os.path.exists(exe_path):
-                pytesseract.pytesseract.tesseract_cmd = exe_path
-        
-        if sys.platform == 'darwin':
-            self.ocr_engine = 'applevision'
-        else:
-            self.ocr_engine = 'paddleocr'
-            
+        self.ocr_engine = 'docling'
         self.paddle_ocr = None
         self.model_storage_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'paddleocr')
 
@@ -30,80 +18,49 @@ class PDFProcessor:
         except Exception:
             return True # Treat as encrypted or broken
 
-    def _vision_ocr(self, img):
-        import tempfile
-        import Vision
-        import objc
-        from Foundation import NSURL
-        
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-            img.save(tf, format="PNG")
-            temp_path = tf.name
-            
-        url = NSURL.fileURLWithPath_(temp_path)
-        handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(url, None)
-        
-        request = Vision.VNRecognizeTextRequest.alloc().init()
-        request.setRecognitionLanguages_(["ru-RU", "en-US"])
-        # Accurate is slower but much better
-        request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-        
-        success, error = handler.performRequests_error_([request], None)
-        
-        text = ""
-        if success:
-            for observation in request.results():
-                text += observation.topCandidates_(1)[0].string() + "\n"
-                
-        os.remove(temp_path)
-        return text.strip()
-
     def _perform_ocr(self, img, status_callback=None):
-        if self.ocr_engine == 'paddleocr':
+        import tempfile
+        import subprocess
+        import sys
+        import json
+        
+        # Save PIL image to a temp PNG
+        fd, temp_path = tempfile.mkstemp(suffix='.png')
+        try:
+            os.close(fd)
+            img.save(temp_path)
+            
+            if status_callback:
+                status_callback("Распознавание текста через PaddleOCR (процесс)...")
+                
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            worker_path = os.path.join(current_dir, 'ocr_worker.py')
+            python_bin = sys.executable
+            
+            res = subprocess.run(
+                [python_bin, worker_path, temp_path],
+                capture_output=True,
+                text=True
+            )
+            if res.returncode != 0:
+                print(f"OCR subprocess failed: {res.stderr}")
+                return ""
+                
             try:
-                if self.paddle_ocr is None:
-                    if status_callback:
-                        status_callback("Инициализация PaddleOCR (скачивание моделей может занять время)...")
-                    from paddleocr import PaddleOCR
-                    import logging
-                    # Suppress paddle verbose logging
-                    logging.getLogger('ppocr').setLevel(logging.ERROR)
-                    self.paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ru')
-                
-                # PaddleOCR expects numpy array (BGR or RGB)
-                import numpy as np
-                img_np = np.array(img.convert('RGB'))
-                if status_callback:
-                    status_callback("Распознавание текста через PaddleOCR...")
-                
-                result = self.paddle_ocr.ocr(img_np, cls=True)
-                
-                text_lines = []
-                if result and result[0]:
-                    for line in result[0]:
-                        text_lines.append(line[1][0])
-                return "\n".join(text_lines)
-            except Exception as e:
-                print(f"PaddleOCR Error: {e}")
-                if status_callback:
-                    status_callback("Ошибка PaddleOCR, переключаемся на Tesseract...")
-                # Fallback to Tesseract
-                return pytesseract.image_to_string(img, lang='rus+eng')
-        elif self.ocr_engine == 'applevision':
-            import sys
-            if sys.platform != 'darwin':
-                return pytesseract.image_to_string(img, lang='rus+eng')
-            try:
-                if status_callback:
-                    status_callback("Распознавание текста через Apple Vision...")
-                return self._vision_ocr(img)
-            except Exception as e:
-                print(f"Apple Vision Error: {e}")
-                if status_callback:
-                    status_callback("Ошибка Apple Vision, переключаемся на Tesseract...")
-                return pytesseract.image_to_string(img, lang='rus+eng')
-        else:
-            return pytesseract.image_to_string(img, lang='rus+eng')
+                data = json.loads(res.stdout.strip())
+                if 'error' in data:
+                    print(f"OCR subprocess error: {data['error']}")
+                    return ""
+                return data.get('text', '')
+            except Exception as parse_err:
+                print(f"Failed to parse OCR subprocess output: {res.stdout}. Error: {parse_err}")
+                return ""
+        except Exception as e:
+            print(f"PaddleOCR Subprocess Error: {e}")
+            return ""
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     def extract_text(self, file_path, status_callback=None):
         if self.check_encryption(file_path):
@@ -296,10 +253,10 @@ class PDFProcessor:
     def check_tesseract_exists(self):
         import sys
         import subprocess
+        import os
+        import shutil
+        
         if sys.platform != 'win32':
-            import shutil
-            import os
-            
             # 1. Проверяем в стандартном PATH
             tess_path = shutil.which('tesseract')
             
@@ -320,10 +277,36 @@ class PDFProcessor:
                 except:
                     return False
             return False
+            
+        # On Windows:
+        tess_path = shutil.which('tesseract')
+        if tess_path:
+            try:
+                import pytesseract
+                pytesseract.pytesseract.tesseract_cmd = tess_path
+                return True
+            except:
+                pass
                 
+        standard_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if os.path.exists(standard_path):
+            try:
+                import pytesseract
+                pytesseract.pytesseract.tesseract_cmd = standard_path
+                return True
+            except:
+                pass
+
         tess_dir = os.path.join(os.getenv('LOCALAPPDATA', os.path.expanduser('~')), 'BerestaAI', 'tesseract')
         exe_path = os.path.join(tess_dir, 'tesseract.exe')
-        return os.path.exists(exe_path)
+        if os.path.exists(exe_path):
+            try:
+                import pytesseract
+                pytesseract.pytesseract.tesseract_cmd = exe_path
+                return True
+            except:
+                pass
+        return False
 
     def download_tesseract(self, progress_callback=None):
         import sys

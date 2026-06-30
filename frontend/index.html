@@ -20,33 +20,6 @@
             </div>
 
             <div class="header-actions" style="display: flex; gap: 12px; align-items: center;">
-                <button onclick="manageOcr()" title="Настройки распознавания текста"
-                    style="background: none; border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: var(--transition);"
-                    onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
-                    onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        style="width: 14px; height: 14px;">
-                        <path d="M4 7V4h16v3M9 20h6M12 4v16" />
-                    </svg> OCR-движок
-                </button>
-                <button onclick="manageModel()" title="Управление нейросетью"
-                    style="background: none; border: 1px solid var(--border-color); color: var(--text-muted); padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: var(--transition);"
-                    onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
-                    onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        style="width: 14px; height: 14px;">
-                        <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
-                        <rect x="9" y="9" width="6" height="6" />
-                        <line x1="9" y1="1" x2="9" y2="4" />
-                        <line x1="15" y1="1" x2="15" y2="4" />
-                        <line x1="9" y1="20" x2="9" y2="23" />
-                        <line x1="15" y1="20" x2="15" y2="23" />
-                        <line x1="20" y1="9" x2="23" y2="9" />
-                        <line x1="20" y1="14" x2="23" y2="14" />
-                        <line x1="1" y1="9" x2="4" y2="9" />
-                        <line x1="1" y1="14" x2="4" y2="14" />
-                    </svg> ИИ-модель
-                </button>
                 <div class="theme-segmented-control">
                     <button class="theme-btn" data-theme-val="light" onclick="setTheme('light')" title="Светлая">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -107,6 +80,11 @@
             <div class="settings-panel" id="settings-rename">
                 <h3>Правила летописи (Именование)</h3>
                 <label class="toggle-label">
+                    <span>Добавить порядковый номер (1., 2., 3. ...)</span>
+                    <input type="checkbox" id="opt-numbering" onchange="triggerAllAutoNames()">
+                    <div class="toggle-slider"></div>
+                </label>
+                <label class="toggle-label">
                     <span>Добавить "Стороны" (ООО "Ромашка" - ИП Иванов А.И.)</span>
                     <input type="checkbox" id="opt-parties" checked>
                     <div class="toggle-slider"></div>
@@ -124,11 +102,6 @@
                 <label class="toggle-label">
                     <span>Указать количество листов (- 2 л)</span>
                     <input type="checkbox" id="opt-pages" checked>
-                    <div class="toggle-slider"></div>
-                </label>
-                <label class="toggle-label">
-                    <span>Добавить порядковый номер (1., 2., 3. ...)</span>
-                    <input type="checkbox" id="opt-numbering" onchange="triggerAllAutoNames()">
                     <div class="toggle-slider"></div>
                 </label>
 
@@ -176,6 +149,11 @@
                 
                 <div id="extract-naming-options" style="margin-top: 10px; margin-bottom: 15px; margin-left: 10px; padding-left: 10px; border-left: 2px solid var(--border-color); transition: all 0.3s;">
                     <label class="toggle-label">
+                        <span>Добавить порядковый номер (1., 2., 3. ...)</span>
+                        <input type="checkbox" id="opt-extract-numbering" onchange="triggerAllAutoNames(); saveSettings();">
+                        <div class="toggle-slider"></div>
+                    </label>
+                    <label class="toggle-label">
                         <span>Добавить "Стороны" (ООО "Ромашка" - ИП Иванов А.И.)</span>
                         <input type="checkbox" id="opt-extract-parties" checked onchange="triggerAllAutoNames(); saveSettings();">
                         <div class="toggle-slider"></div>
@@ -193,11 +171,6 @@
                     <label class="toggle-label">
                         <span>Указать количество листов (- 2 л)</span>
                         <input type="checkbox" id="opt-extract-pages" checked onchange="triggerAllAutoNames(); saveSettings();">
-                        <div class="toggle-slider"></div>
-                    </label>
-                    <label class="toggle-label">
-                        <span>Добавить порядковый номер (1., 2., 3. ...)</span>
-                        <input type="checkbox" id="opt-extract-numbering" onchange="triggerAllAutoNames(); saveSettings();">
                         <div class="toggle-slider"></div>
                     </label>
                     <div class="input-group">
@@ -232,7 +205,14 @@
 
             <!-- Анимация загрузки -->
             <div class="progress-container" id="progress-container">
-                <div class="progress-text" id="progress-text">Расшифровка бересты...</div>
+                <div class="progress-header">
+                    <div class="progress-text" id="progress-text">Расшифровка бересты...</div>
+                    <div class="progress-stats">
+                        <span id="progress-percent">0%</span>
+                        <span style="opacity: 0.5;">|</span>
+                        <span id="progress-timer">00:00</span>
+                    </div>
+                </div>
                 <div class="branch-track">
                     <div class="branch-fill" id="branch-fill">
                         <!-- SVG Листик -->
@@ -354,167 +334,25 @@
         </footer>
     </div>
 
-    <!-- Модальное окно выбора нейросети -->
-    <div id="model-select-overlay" class="hidden opacity-0 transition-all duration-300" onclick="closeModelManager()"
+    <!-- Модальное окно загрузки зависимостей и ИИ-моделей -->
+    <div id="dependencies-download-overlay" class="hidden opacity-0 transition-all duration-300"
         style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;">
-        <div class="scale-95 transition-all duration-300" onclick="event.stopPropagation()"
-            style="background: var(--modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Управление ИИ-моделями</h3>
-                <button id="close-model-btn" onclick="closeModelManager()"
-                    style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); transition: color 0.2s;">✖</button>
-            </div>
-            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Программе
-                необходимо скачать нейросеть для умного распознавания документов. Вы можете установить обе и
-                переключаться между ними.</p>
-
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-                <div id="model-card-gemini" style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
-                    <h4 style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                        Google Gemini API
-                    </h4>
-                    <p style="margin: 0 0 12px 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Используйте облачные модели Gemini для максимальной скорости (не нагружает ПК).</p>
-                    <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
-                        <input type="password" id="gemini-api-key" class="text-input" placeholder="Введите API ключ AIzaSy..." style="width: 100%; font-size: 0.85rem;" onchange="saveGeminiSettings()">
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <select id="gemini-model-select" class="text-input" style="width: 100%; font-size: 0.85rem;" onchange="saveGeminiSettings()">
-                            <option value="gemini-2.5-flash">Google Gemini 2.5 Flash (Рекомендуется)</option>
-                            <option value="gemini-2.5-flash-lite">Google Gemini 2.5 Flash-Lite (Экономичный)</option>
-                            <option value="gemini-1.5-flash">Google Gemini 1.5 Flash (Устаревшая)</option>
-                        </select>
-                    </div>
-                    <div id="model-actions-gemini" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
-                </div>
-
-                <div id="model-card-smolagents"
-                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
-                    <h4 style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                        Локальный Агент (SmolAgents + Saiga 4B)
-                    </h4>
-                    <p style="margin: 0 0 12px 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Использование локального ИИ-агента. Требуется запущенный Ollama на ПК.</p>
-                    <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
-                        <input type="text" id="ollama-model-name" class="text-input" placeholder="Имя модели Ollama (saiga:4b)" style="width: 100%; font-size: 0.85rem;" onchange="saveOllamaSettings()">
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <input type="text" id="ollama-base-url" class="text-input" placeholder="Адрес Ollama (http://localhost:11434)" style="width: 100%; font-size: 0.85rem;" onchange="saveOllamaSettings()">
-                    </div>
-                    <div id="model-actions-smolagents" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
-                </div>
-
-                <div id="model-card-fast"
-                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
-                    <h4
-                        style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                        QVikhr 4B <span
-                            style="font-size: 11px; background: var(--theme-switch-bg); padding: 2px 6px; border-radius: 4px; color: var(--text-muted);">~2.5
-                            ГБ</span></h4>
-                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Низкие
-                        требования к ПК (от 2.5 ГБ ОЗУ). Специально адаптирована под русский язык. Работает очень быстро
-                        и логично.</p>
-                    <div id="model-actions-fast"
-                        style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
-                </div>
-
-                <div id="model-card-accurate"
-                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
-                    <h4
-                        style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                        Saiga Qwen 4B <span
-                            style="font-size: 11px; background: var(--theme-switch-bg); padding: 2px 6px; border-radius: 4px; color: var(--text-muted);">~2.5
-                            ГБ</span></h4>
-                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Идеальное
-                        следование правилам и иерархии, высочайшее качество. <b>Требует от 2.5 ГБ ОЗУ</b>, отличный баланс скорости и ума.</p>
-                    <div id="model-actions-accurate"
-                        style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
-                </div>
-
-                <div id="model-card-accurate_9b"
-                    style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; background: var(--container-bg); transition: all 0.2s;">
-                    <h4
-                        style="margin: 0 0 8px 0; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                        Qwen 3.5 9B <span
-                            style="font-size: 11px; background: var(--theme-switch-bg); padding: 2px 6px; border-radius: 4px; color: var(--text-muted);">~5.5
-                            ГБ</span></h4>
-                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Наиболее точная локальная модель для сложных юридических текстов. <b>Рекомендуется от 8 ГБ ОЗУ</b>.</p>
-                    <div id="model-actions-accurate_9b"
-                        style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 32px;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Модальное окно выбора OCR -->
-    <div id="ocr-select-overlay" class="hidden opacity-0 transition-all duration-300"
-        style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; align-items: center; justify-content: center; display: none;"
-        onclick="if(event.target === this) closeOcrManager()">
         <div class="scale-95 transition-all duration-300"
-            style="background: var(--modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 600px; width: 95%; box-shadow: var(--shadow); border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="margin: 0; color: var(--text-main); font-size: 1.25rem;">Движки извлечения текста
-                </h3>
-                <button onclick="closeOcrManager()"
-                    style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); transition: color 0.2s;">✖</button>
+            style="background: var(--modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 32px; border-radius: 16px; max-width: 500px; width: 90%; box-shadow: var(--shadow); border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto; text-align: center;">
+            <h3 style="margin: 0 0 16px 0; color: var(--text-main); font-size: 1.25rem;">Необходима установка компонентов</h3>
+            <p id="dependencies-message" style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
+                Для работы программы необходимо скачать недостающие компоненты.
+            </p>
+            <div id="dependencies-list" style="text-align: left; background: rgba(0,0,0,0.2); padding: 14px 18px; border-radius: 12px; margin-bottom: 24px; font-size: 0.9rem; color: var(--text-main); border: 1px solid var(--border-color); display: inline-block; width: 100%; box-sizing: border-box;">
             </div>
-            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Настройте алгоритмы, которые будут читать текст и воссоздавать таблицы из ваших сканов.</p>
-
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                
-                <div style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);" id="ocr-container-paddleocr">
-                    <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('paddleocr')">
-                        <input type="radio" name="ocr_engine" value="paddleocr" id="ocr-radio-paddleocr" checked style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
-                        <div>
-                            <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
-                                PaddleOCR <span style="font-size: 0.75rem; background: var(--border-color); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">По умолчанию</span></div>
-                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Мощная нейросеть. Читает фото со смартфона, кривые сканы. Отличная скорость и точность, но без сохранения таблиц.</div>
-                        </div>
-                    </label>
-                    <button id="btn-download-ppstructure" onclick="downloadLayoutEngine('ppstructure')" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~150 МБ)</button>
-                    <div id="ppstructure-status-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
-                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Модель скачана и готова
-                    </div>
-                </div>
-
-                <div style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);" id="ocr-container-docling">
-                    <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('docling')">
-                        <input type="radio" name="ocr_engine" value="docling" id="ocr-radio-docling" style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
-                        <div>
-                            <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">Docling <span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Рекомендуется</span></div>
-                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Самая мощная модель от IBM. Идеально читает текст и переносит сложную структуру, стили и многостраничные таблицы.</div>
-                        </div>
-                    </label>
-                    <button id="btn-download-docling" onclick="downloadLayoutEngine('docling')" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~3 ГБ)</button>
-                    <div id="docling-status-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;"></div>
-                </div>
-
-                <div style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; transition: var(--transition);" id="ocr-container-tesseract">
-                    <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px;" onclick="setOcrEngine('tesseract')">
-                        <input type="radio" name="ocr_engine" value="tesseract" id="ocr-radio-tesseract" style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
-                        <div>
-                            <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">
-                                Tesseract OCR <span style="font-size: 0.75rem; background: var(--border-color); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">~40 МБ</span></div>
-                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Классический движок. Хорошо справляется с чистыми сканами и документами с хорошим качеством.</div>
-                        </div>
-                    </label>
-                    <button id="btn-download-tesseract" onclick="downloadTesseract()" class="btn-outline" style="width: 100%; margin-top: 4px;">Скачать (~40 МБ)</button>
-                    <div id="tesseract-downloaded-mark" style="display: none; color: var(--accent); font-size: 0.85rem; font-weight: 500; align-items: center; gap: 6px;">
-                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Модель скачана и готова
-                    </div>
-                </div>
-
-                <label style="border: 1px solid var(--border-color); padding: 16px; border-radius: 12px; cursor: pointer; display: none; align-items: flex-start; gap: 12px; transition: var(--transition);" id="ocr-label-applevision" onclick="setOcrEngine('applevision')">
-                    <input type="radio" name="ocr_engine" value="applevision" style="margin-top: 4px; accent-color: var(--accent); transform: scale(1.2);">
-                    <div>
-                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; color: var(--text-main);">Apple Vision <span style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">Встроено (только для Mac)</span></div>
-                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Встроенная нейросеть Apple. Работает моментально, идеально распознает любой текст и фото.</div>
-                    </div>
-                </label>
+            <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
+                <button class="btn-primary" onclick="confirmDownloadDependencies()" style="flex: 1; max-width: 140px; margin: 0; padding: 10px 24px; justify-content: center;">Скачать</button>
+                <button class="btn-outline" onclick="cancelDownloadDependencies()" style="flex: 1; max-width: 140px; margin: 0; padding: 10px 24px;">Отмена</button>
             </div>
-
-            <button class="btn-primary" style="width: 100%; margin-top: 24px; padding: 12px; border-radius: 8px;"
-                onclick="closeOcrManager()">Сохранить настройки</button>
         </div>
     </div>
+
+
 
     <!-- Модальное окно поддержки -->
     <div id="support-overlay" class="hidden opacity-0 transition-all"
@@ -634,138 +472,20 @@
             toggleExtractNamingOptions();
         });
 
-        function setOcrEngine(engine) {
-            // Update UI styles
-            const containers = {
-                'tesseract': document.getElementById('ocr-container-tesseract'),
-                'paddleocr': document.getElementById('ocr-container-paddleocr'),
-                'docling': document.getElementById('ocr-container-docling'),
-                'applevision': document.getElementById('ocr-label-applevision')
-            };
 
-            for (const [key, el] of Object.entries(containers)) {
-                if (el) {
-                    el.style.borderColor = engine === key ? 'var(--accent)' : 'var(--border-color)';
-                    el.style.background = 'transparent';
-                    
-                    if (engine === key) {
-                        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-                        el.style.background = isDark ? 'rgba(245, 158, 11, 0.05)' : 'rgba(45, 106, 79, 0.05)';
-                        
-                        let rdo = document.getElementById(`ocr-radio-${key}`);
-                        if(rdo) rdo.checked = true;
-                    }
-                }
-            }
-
-            // Sync with backend
-            if (window.pywebview) {
-                pywebview.api.set_ocr_engine(engine);
-            }
-        }
 
         window.addEventListener('pywebviewready', function () {
-            // Check if model exists
-            pywebview.api.check_model().then(exists => {
-                if (!exists) {
-                    manageModel(true);
+            // Check if all dependencies exist
+            pywebview.api.get_missing_dependencies().then(missing => {
+                if (missing && missing.length > 0) {
+                    showDependenciesOverlay(missing);
                 }
             });
-            // Show Apple Vision if Mac
-            pywebview.api.get_os_info().then(os => {
-                if (os === 'darwin') {
-                    document.getElementById('ocr-label-applevision').style.display = 'flex';
-                }
-            });
-            // Sync initial OCR engine state from backend
-            pywebview.api.get_ocr_engine().then(engine => {
-                if (engine) {
-                    let rdo = document.querySelector(`input[name="ocr_engine"][value="${engine}"]`);
-                    if (rdo) rdo.checked = true;
-                    setOcrEngine(engine);
-                }
-            });
-            window.checkOcrStatus();
         });
 
-        window.checkOcrStatus = function() {
-            if (window.pywebview) {
-                if (pywebview.api.check_paddleocr) {
-                    pywebview.api.check_paddleocr().then(exists => {
-                        const btn = document.getElementById('btn-download-paddle');
-                        const mark = document.getElementById('paddle-downloaded-mark');
-                        if (exists) {
-                            if(btn) btn.style.display = 'none';
-                            if(mark) mark.style.display = 'flex';
-                        } else {
-                            if(btn) btn.style.display = 'block';
-                            if(mark) mark.style.display = 'none';
-                        }
-                    });
-                }
-                if (pywebview.api.check_tesseract) {
-                    pywebview.api.check_tesseract().then(exists => {
-                        const btn = document.getElementById('btn-download-tesseract');
-                        const mark = document.getElementById('tesseract-downloaded-mark');
-                        if (exists) {
-                            if(btn) btn.style.display = 'none';
-                            if(mark) mark.style.display = 'flex';
-                        } else {
-                            if(btn) btn.style.display = 'block';
-                            if(mark) mark.style.display = 'none';
-                        }
-                    });
-                }
-            }
-        };
+        window.checkOcrStatus = function() {};
 
-        function downloadPaddleOCR() {
-            closeOcrManager();
-            document.getElementById('progress-container').style.display = 'block';
-            document.getElementById('action-btn').style.display = 'none';
-            document.getElementById('progress-text').innerText = "Подготовка к скачиванию PaddleOCR...";
 
-            if (window.pywebview && pywebview.api.download_paddleocr) {
-                pywebview.api.download_paddleocr().then((success) => {
-                    document.getElementById('action-btn').style.display = 'block';
-                    document.getElementById('progress-container').style.display = 'none';
-                    if (success) {
-                        window.checkOcrStatus();
-                        manageOcr();
-                    } else {
-                        alert("Ошибка при скачивании PaddleOCR.");
-                    }
-                }).catch(err => {
-                    document.getElementById('action-btn').style.display = 'block';
-                    document.getElementById('progress-container').style.display = 'none';
-                    alert("Произошла ошибка: " + err);
-                });
-            }
-        }
-
-        function downloadTesseract() {
-            closeOcrManager();
-            document.getElementById('progress-container').style.display = 'block';
-            document.getElementById('action-btn').style.display = 'none';
-            document.getElementById('progress-text').innerText = "Подготовка к скачиванию Tesseract OCR...";
-
-            if (window.pywebview && pywebview.api.download_tesseract) {
-                pywebview.api.download_tesseract().then((success) => {
-                    document.getElementById('action-btn').style.display = 'block';
-                    document.getElementById('progress-container').style.display = 'none';
-                    if (success) {
-                        window.checkOcrStatus();
-                        manageOcr();
-                    } else {
-                        alert("Ошибка при скачивании Tesseract OCR.");
-                    }
-                }).catch(err => {
-                    document.getElementById('action-btn').style.display = 'block';
-                    document.getElementById('progress-container').style.display = 'none';
-                    alert("Произошла ошибка: " + err);
-                });
-            }
-        }
 
         function saveSettings() {
             let settings = {};
@@ -1002,131 +722,129 @@
         let selectedFiles = [];
         let previewData = [];
 
+        let progressTimerInterval = null;
+        let progressStartTime = null;
+
+        function startProgressTimer() {
+            if (progressTimerInterval) return;
+            progressStartTime = Date.now();
+            
+            const percentEl = document.getElementById('progress-percent');
+            const branchFill = document.getElementById('branch-fill');
+            if (percentEl) {
+                const currentWidth = branchFill ? branchFill.style.width : "0%";
+                percentEl.innerText = currentWidth || "0%";
+            }
+            const timerEl = document.getElementById('progress-timer');
+            if (timerEl) {
+                timerEl.innerText = "00:00";
+            }
+            
+            progressTimerInterval = setInterval(() => {
+                const now = Date.now();
+                const elapsedSec = Math.floor((now - progressStartTime) / 1000);
+                
+                const minutes = Math.floor(elapsedSec / 60);
+                const seconds = elapsedSec % 60;
+                const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                const el = document.getElementById('progress-timer');
+                if (el) el.innerText = timeStr;
+            }, 1000);
+        }
+
+        function stopProgressTimer() {
+            if (progressTimerInterval) {
+                clearInterval(progressTimerInterval);
+                progressTimerInterval = null;
+            }
+        }
+
+        function initProgressObserver() {
+            const progressContainer = document.getElementById('progress-container');
+            if (progressContainer) {
+                const observer = new MutationObserver((mutations) => {
+                    mutations.forEach((mutation) => {
+                        if (mutation.attributeName === 'style') {
+                            const display = progressContainer.style.display;
+                            if (display === 'none') {
+                                stopProgressTimer();
+                            } else if (display === 'block') {
+                                startProgressTimer();
+                            }
+                        }
+                    });
+                });
+                observer.observe(progressContainer, { attributes: true });
+            }
+        }
+
+        if (document.readyState !== 'loading') {
+            initProgressObserver();
+        } else {
+            document.addEventListener('DOMContentLoaded', initProgressObserver);
+        }
+
         window.updateStatus = function (msg) {
             const progressText = document.getElementById('progress-text');
             const progressContainer = document.getElementById('progress-container');
             const branchFill = document.getElementById('branch-fill');
+            const progressPercent = document.getElementById('progress-percent');
 
             progressContainer.style.display = 'block';
             progressText.innerText = msg;
             branchFill.classList.add('growing');
 
-            if (msg.includes("готовы") || msg.includes("успешно")) {
+            startProgressTimer();
+
+            let targetPercent = 0;
+            if (msg.includes("готовы") || msg.includes("успешно") || msg.includes("100%")) {
                 branchFill.style.width = '100%';
+                targetPercent = 100;
             } else if (msg.includes("%")) {
                 const match = msg.match(/(\d+)%/);
                 if (match) {
                     branchFill.style.width = match[1] + '%';
+                    targetPercent = parseInt(match[1]);
                 }
-            } else if (parseInt(branchFill.style.width || "0") < 80) {
-                // simple simulated progress
-                let current = parseInt(branchFill.style.width || "0");
-                branchFill.style.width = (current + 10) + '%';
+            } else {
+                if (parseInt(branchFill.style.width || "0") < 80) {
+                    let current = parseInt(branchFill.style.width || "0");
+                    const next = current + 10;
+                    branchFill.style.width = next + '%';
+                    targetPercent = next;
+                } else {
+                    targetPercent = parseInt(branchFill.style.width || "0");
+                }
+            }
+            if (progressPercent) {
+                progressPercent.innerText = targetPercent + '%';
             }
         };
 
-        function manageModel(forceBlock = false) {
-            pywebview.api.get_models_status().then(status => {
-                let anyInstalled = false;
-
-                if (window.pywebview && pywebview.api.get_gemini_config) {
-                    pywebview.api.get_gemini_config().then(config => {
-                        document.getElementById('gemini-api-key').value = config.api_key || '';
-                        if (config.model) {
-                            document.getElementById('gemini-model-select').value = config.model;
-                        }
-                        const geminiModel = document.getElementById('gemini-model-select').value;
-                        const stGemini = status[geminiModel] || { installed: true, active: false };
-                        const cardG = document.getElementById(`model-card-gemini`);
-                        const actionsG = document.getElementById(`model-actions-gemini`);
-                        if (stGemini.active) {
-                            cardG.style.borderColor = 'var(--accent)';
-                            cardG.style.background = 'rgba(45, 106, 79, 0.05)';
-                            document.documentElement.getAttribute('data-theme') === 'dark' ? cardG.style.background = 'rgba(245, 158, 11, 0.05)' : null;
-                            actionsG.innerHTML = `<span style="color: var(--accent); font-weight: bold; font-size: 0.85rem; display:flex; align-items:center; gap:4px;"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Активная модель</span>`;
-                        } else {
-                            cardG.style.borderColor = 'var(--border-color)';
-                            cardG.style.background = 'var(--container-bg)';
-                            actionsG.innerHTML = `<button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; flex: 1;" onclick="setActiveGeminiModel()">Сделать активной</button>`;
-                        }
-                    });
-                }
-
-                if (window.pywebview && pywebview.api.get_ollama_config) {
-                    pywebview.api.get_ollama_config().then(config => {
-                        document.getElementById('ollama-model-name').value = config.model || '';
-                        document.getElementById('ollama-base-url').value = config.base_url || '';
-                        
-                        const stSmol = status["smolagents_local"] || { installed: true, active: false };
-                        const cardS = document.getElementById(`model-card-smolagents`);
-                        const actionsS = document.getElementById(`model-actions-smolagents`);
-                        if (stSmol.active) {
-                            cardS.style.borderColor = 'var(--accent)';
-                            cardS.style.background = 'rgba(45, 106, 79, 0.05)';
-                            document.documentElement.getAttribute('data-theme') === 'dark' ? cardS.style.background = 'rgba(245, 158, 11, 0.05)' : null;
-                            actionsS.innerHTML = `<span style="color: var(--accent); font-weight: bold; font-size: 0.85rem; display:flex; align-items:center; gap:4px;"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Активная модель</span>`;
-                        } else {
-                            cardS.style.borderColor = 'var(--border-color)';
-                            cardS.style.background = 'var(--container-bg)';
-                            actionsS.innerHTML = `<button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; flex: 1;" onclick="setActiveOllamaModel()">Сделать активной</button>`;
-                        }
-                    });
-                }
-
-                ['fast', 'accurate', 'accurate_9b'].forEach(mType => {
-                    const card = document.getElementById(`model-card-${mType}`);
-                    const actionsDiv = document.getElementById(`model-actions-${mType}`);
-                    const st = status[mType];
-
-                    if (st.installed) anyInstalled = true;
-
-                    if (st.installed && st.active) {
-                        card.style.borderColor = 'var(--accent)';
-                        card.style.background = 'rgba(45, 106, 79, 0.05)';
-                        document.documentElement.getAttribute('data-theme') === 'dark' ?
-                            card.style.background = 'rgba(245, 158, 11, 0.05)' : null;
-
-                        actionsDiv.innerHTML = `<span style="color: var(--accent); font-weight: bold; font-size: 0.85rem; display:flex; align-items:center; gap:4px;"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Активная модель</span>`;
-                    } else if (st.installed && !st.active) {
-                        card.style.borderColor = 'var(--border-color)';
-                        card.style.background = 'var(--container-bg)';
-                        actionsDiv.innerHTML = `
-                            <button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; flex: 1;" onclick="setActiveModel('${mType}')">Сделать активной</button>
-                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444; border-radius: 6px; flex: 1;" onclick="doDeleteModel('${mType}')">Удалить</button>
-                        `;
-                    } else {
-                        card.style.borderColor = 'var(--border-color)';
-                        card.style.background = 'var(--container-bg)';
-                        const sizeGB = mType === 'fast' ? '2.5' : (mType === 'accurate' ? '2.5' : '5.5');
-                        actionsDiv.innerHTML = `
-                            <button class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px;" onclick="startModelDownload('${mType}')">Скачать (~${sizeGB} ГБ)</button>
-                        `;
-                    }
-                });
-
-                const overlay = document.getElementById('model-select-overlay');
-                overlay.classList.remove('hidden');
-                overlay.style.display = 'flex';
-                setTimeout(() => {
-                    overlay.classList.remove('opacity-0');
-                    overlay.firstElementChild.classList.remove('scale-95');
-                    overlay.firstElementChild.classList.add('scale-100');
-                }, 10);
+        function showDependenciesOverlay(missing) {
+            const overlay = document.getElementById('dependencies-download-overlay');
+            if (!overlay) return;
+            
+            let totalBytes = 0;
+            let listHtml = '<ul style="margin: 0; padding-left: 20px; line-height: 1.6;">';
+            missing.forEach(item => {
+                totalBytes += item.size_bytes;
+                listHtml += `<li><strong>${item.name}</strong> (~${item.size})</li>`;
             });
-        }
-
-        function closeModelManager() {
-            const overlay = document.getElementById('model-select-overlay');
-            overlay.classList.add('opacity-0');
-            overlay.firstElementChild.classList.add('scale-95');
-            setTimeout(() => {
-                overlay.classList.add('hidden');
-                overlay.style.display = 'none';
-            }, 300);
-        }
-
-        function manageOcr() {
-            const overlay = document.getElementById('ocr-select-overlay');
+            listHtml += '</ul>';
+            
+            let totalSizeStr = "";
+            if (totalBytes >= 1024 * 1024 * 1024) {
+                totalSizeStr = (totalBytes / (1024 * 1024 * 1024)).toFixed(1) + " ГБ";
+            } else {
+                totalSizeStr = (totalBytes / (1024 * 1024)).toFixed(0) + " МБ";
+            }
+            
+            document.getElementById('dependencies-message').innerText = 
+                `Для работы программы необходимо скачать недостающие компоненты (${totalSizeStr}). Установка начнется автоматически:`;
+            document.getElementById('dependencies-list').innerHTML = listHtml;
+            
             overlay.classList.remove('hidden');
             overlay.style.display = 'flex';
             setTimeout(() => {
@@ -1134,91 +852,44 @@
                 overlay.firstElementChild.classList.remove('scale-95');
                 overlay.firstElementChild.classList.add('scale-100');
             }, 10);
+        }
+
+        function hideDependenciesOverlay() {
+            const overlay = document.getElementById('dependencies-download-overlay');
+            if (overlay) {
+                overlay.classList.add('opacity-0');
+                overlay.firstElementChild.classList.add('scale-95');
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                    overlay.style.display = 'none';
+                }, 300);
+            }
+        }
+
+        function confirmDownloadDependencies() {
+            hideDependenciesOverlay();
             
-            // Check status of all engines when modal opens
-            checkAllLayoutEnginesStatus();
-        }
-
-        function closeOcrManager() {
-            const overlay = document.getElementById('ocr-select-overlay');
-            overlay.classList.add('opacity-0');
-            overlay.firstElementChild.classList.add('scale-95');
-            setTimeout(() => {
-                overlay.classList.add('hidden');
-                overlay.style.display = 'none';
-            }, 300);
-        }
-
-        function saveGeminiSettings() {
-            const key = document.getElementById('gemini-api-key').value;
-            const model = document.getElementById('gemini-model-select').value;
-            if (window.pywebview && pywebview.api.save_gemini_config) {
-                pywebview.api.save_gemini_config(key, model).then(() => {
-                    manageModel();
-                });
-            }
-        }
-
-        function setActiveGeminiModel() {
-            const key = document.getElementById('gemini-api-key').value;
-            if (!key) {
-                alert("Пожалуйста, введите Gemini API Key.");
-                return;
-            }
-            const model = document.getElementById('gemini-model-select').value;
-            pywebview.api.save_gemini_config(key, model).then(() => {
-                pywebview.api.set_active_model(model).then(success => {
-                    if (success) manageModel();
-                });
-            });
-        }
-
-        function saveOllamaSettings() {
-            const model = document.getElementById('ollama-model-name').value.trim() || 'saiga:4b';
-            const url = document.getElementById('ollama-base-url').value.trim() || 'http://localhost:11434';
-            if (window.pywebview && pywebview.api.save_ollama_config) {
-                pywebview.api.save_ollama_config(model, url).then(() => {
-                    manageModel();
-                });
-            }
-        }
-
-        function setActiveOllamaModel() {
-            const model = document.getElementById('ollama-model-name').value.trim() || 'saiga:4b';
-            const url = document.getElementById('ollama-base-url').value.trim() || 'http://localhost:11434';
-            pywebview.api.save_ollama_config(model, url).then(() => {
-                pywebview.api.set_active_model('smolagents_local').then(success => {
-                    if (success) manageModel();
-                });
-            });
-        }
-
-        function setActiveModel(mType) {
-            pywebview.api.set_active_model(mType).then(success => {
-                if (success) manageModel();
-            });
-        }
-
-        function doDeleteModel(mType) {
-            if (confirm("Вы уверены, что хотите удалить эту модель с диска?")) {
-                pywebview.api.delete_model(mType).then(success => {
-                    manageModel();
-                });
-            }
-        }
-
-        function startModelDownload(modelType) {
-            closeModelManager();
+            // Show loading status container
             document.getElementById('progress-container').style.display = 'block';
             document.getElementById('action-btn').style.display = 'none';
-            document.getElementById('progress-text').innerText = "Подготовка к скачиванию...";
-
-            pywebview.api.download_model(modelType).then(() => {
-                document.getElementById('action-btn').style.display = 'block';
-                document.getElementById('progress-container').style.display = 'none';
-                manageModel(); // Show manager again to confirm success
-            });
+            document.getElementById('progress-text').innerText = "Подготовка к установке...";
+            
+            pywebview.api.download_all_dependencies();
         }
+
+        function cancelDownloadDependencies() {
+            pywebview.api.exit_app();
+        }
+
+        window.dependenciesDownloadComplete = function(success) {
+            document.getElementById('progress-container').style.display = 'none';
+            document.getElementById('action-btn').style.display = 'block';
+            if (success) {
+                alert("Все компоненты успешно установлены!");
+            } else {
+                alert("Ошибка установки компонентов. Пожалуйста, перезапустите приложение.");
+            }
+        };
 
         function resetTable() {
             document.getElementById('preview-container').style.display = 'none';
@@ -1361,6 +1032,7 @@
             }
         }
 
+
         async function startProcessing() {
             if (isProcessing) {
                 alert("Система уже обрабатывает файлы!");
@@ -1392,23 +1064,30 @@
                     layout_engine: document.getElementById('opt-layout-engine').value
                 };
 
-                // Check if layout engine is downloaded
-                if (currentAppMode === 'extract' && extractSettings.layout_engine !== 'basic') {
-                    const btnLayout = document.getElementById('btn-download-layout');
-                    if (btnLayout && btnLayout.style.display !== 'none') {
-                        alert("Сперва необходимо скачать выбранный модуль распознавания верстки!");
-                        btn.style.display = 'block';
-                        progressContainer.style.display = 'none';
-                        previewContainer.style.display = 'none';
-                        isProcessing = false;
-                        return;
-                    }
-                }
+
 
                 // Call python API
                 previewData = await pywebview.api.process_files(selectedFiles, currentAppMode, extractSettings);
 
-                if (previewData && previewData.length > 0 && !previewData.error) {
+                // Check if it's an error array or single error object
+                let apiError = null;
+                if (previewData) {
+                    if (previewData.error) {
+                        apiError = previewData.error;
+                    } else if (Array.isArray(previewData) && previewData.length === 1 && previewData[0].error) {
+                        apiError = previewData[0].error;
+                    }
+                }
+
+                if (apiError) {
+                    alert(apiError);
+                    btn.style.display = 'block';
+                    progressContainer.style.display = 'none';
+                    isProcessing = false;
+                    return;
+                }
+
+                if (previewData && previewData.length > 0) {
                     if (currentAppMode === 'extract' && !extractSettings.split) {
                         progressText.innerText = "Сохранение...";
                         const exportFormats = Array.from(document.querySelectorAll('.format-checkbox:checked')).map(b => b.dataset.format);
@@ -1443,8 +1122,8 @@
                         if (window.pywebview) pywebview.api.resize_window(1200, 920);
                         isProcessing = false;
                     }
-                } else if (previewData.error) {
-                    alert(previewData.error);
+                } else {
+                    alert("Не удалось извлечь документы или список пуст.");
                     btn.style.display = 'block';
                     progressContainer.style.display = 'none';
                     isProcessing = false;

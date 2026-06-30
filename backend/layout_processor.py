@@ -1,10 +1,17 @@
 import os
 import re
 
+# Clean proxy environment variables to prevent httpx.InvalidURL: Invalid port: ':1'
+for key in ['no_proxy', 'NO_PROXY']:
+    if key in os.environ:
+        parts = [p for p in os.environ[key].split(',') if p != '::1' and p != '::1/128']
+        os.environ[key] = ','.join(parts)
+
 class LayoutProcessor:
     def __init__(self):
         self.docling_converter = None
         self.pp_structure = None
+        self._rapidocr = None
 
 
     def check_engine(self, engine_name):
@@ -29,7 +36,10 @@ class LayoutProcessor:
                 return False
         elif engine_name == 'ppstructure':
             try:
-                from paddleocr import PPStructure
+                try:
+                    from paddleocr import PPStructureV3
+                except ImportError:
+                    from paddleocr import PPStructure
                 return True
             except ImportError:
                 return False
@@ -197,17 +207,77 @@ class LayoutProcessor:
             self.docling_converter = DocumentConverter()
 
         if status_callback:
-            status_callback("Анализ верстки и таблиц (Docling)...")
+            status_callback("Изучаем структуру документа...")
             
         try:
             result = self.docling_converter.convert(file_path)
             pages_text = []
+            
+            import fitz
+            from PIL import Image, ImageEnhance
+            import io
+            import numpy as np
+            
+            doc = None
+            
             # doc.pages is a dict with page numbers as keys
             for page_no in sorted(result.document.pages.keys()):
-                if status_callback:
-                    status_callback(f"Экспорт страницы {page_no} (Docling)...")
+                # if status_callback:
+                #     status_callback(f"Экспорт страницы {page_no} (Docling)...")
                 page_md = result.document.export_to_markdown(page_no=page_no)
+                
+                # Check if this page is a scan where Russian OCR failed (less than 15 Cyrillic letters)
+                cyrillic_letters = re.findall(r'[А-Яа-я]', page_md)
+                if len(cyrillic_letters) < 15:
+                    if doc is None:
+                        doc = fitz.open(file_path)
+                    
+                    page = doc[page_no - 1]
+                    zoom_matrix = fitz.Matrix(3.0, 3.0)
+                    pix = page.get_pixmap(matrix=zoom_matrix)
+                    img = Image.open(io.BytesIO(pix.tobytes("png")))
+                    
+                    img = img.convert('L')
+                    enhancer = ImageEnhance.Contrast(img)
+                    img = enhancer.enhance(2.0)
+                    
+                    import tempfile
+                    import subprocess
+                    import sys
+                    import json
+                    
+                    fd, temp_path = tempfile.mkstemp(suffix='.png')
+                    try:
+                        os.close(fd)
+                        img.save(temp_path)
+                        
+                        current_dir = os.path.dirname(os.path.abspath(__file__))
+                        worker_path = os.path.join(current_dir, 'ocr_worker.py')
+                        python_bin = sys.executable
+                        
+                        res = subprocess.run(
+                            [python_bin, worker_path, temp_path],
+                            capture_output=True,
+                            text=True
+                        )
+                        if res.returncode == 0:
+                            try:
+                                data = json.loads(res.stdout.strip())
+                                if 'text' in data and len(data['text'].strip()) > 10:
+                                    page_md = data['text']
+                            except Exception:
+                                pass
+                    except Exception as ocr_err:
+                        print(f"Fallback PaddleOCR subprocess error in Docling: {ocr_err}")
+                    finally:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                
                 pages_text.append({'page_num': page_no, 'text': page_md})
+                
+            if doc:
+                doc.close()
+                
             return pages_text
         except Exception as e:
             print(f"Docling extraction error: {e}")
@@ -240,7 +310,7 @@ class LayoutProcessor:
             self.pp_structure = PPStructure(lang='ru', show_log=False)
             
         if status_callback:
-            status_callback("Анализ верстки и таблиц (PP-Structure)...")
+            status_callback("Изучаем структуру документа...")
             
         try:
             import cv2
@@ -303,6 +373,7 @@ class LayoutProcessor:
     def unload_engine(self):
         self.docling_converter = None
         self.pp_structure = None
+        self._rapidocr = None
         import gc
         gc.collect()
         try:

@@ -12,91 +12,39 @@ class ModelManager:
         
         # Example models
         self.models = {
-            "fast": {"repo_id": "Vikhrmodels/QVikhr-3-4B-Instruction-GGUF", "filename": "QVikhr-3-4B-Instruction-Q4_K_M.gguf"},
-            "accurate": {"repo_id": "RichardErkhov/Defetya_-_qwen-4B-saiga-gguf", "filename": "qwen-4B-saiga.Q4_K_M.gguf"},
             "accurate_9b": {"repo_id": "unsloth/Qwen3.5-9B-GGUF", "filename": "Qwen3.5-9B-Q4_K_M.gguf"}
         }
-        
-        self.gemini_models = {
-            "gemini-2.5-flash": "Google Gemini 2.5 Flash (Рекомендуется)",
-            "gemini-2.5-flash-lite": "Google Gemini 2.5 Flash-Lite (Экономичный)",
-            "gemini-1.5-flash": "Google Gemini 1.5 Flash (Устаревшая)"
-        }
-
-        
-        # Migrate old model if it exists
-        old_model = os.path.join(self.model_dir, 'model.gguf')
-        if os.path.exists(old_model):
-            os.rename(old_model, self.get_model_path('fast'))
+        self.gemini_models = {}
 
     def get_model_path(self, model_type):
-        if model_type not in self.models:
-            model_type = "fast"
-        return os.path.join(self.model_dir, f"{model_type}.gguf")
+        return os.path.join(self.model_dir, "accurate_9b.gguf")
 
     def check_model_exists(self, model_type):
-        return os.path.exists(self.get_model_path(model_type))
+        return os.path.exists(self.get_model_path("accurate_9b"))
 
     def get_active_model_type(self):
+        return "accurate_9b"
+
+    def set_active_model_type(self, model_type):
+        config = {}
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, 'r') as f:
                     config = json.load(f)
-                    active = config.get("active_model", "fast")
-                    if active in self.gemini_models:
-                        return active
-                    if active == "smolagents_local":
-                        return active
-                    if active in self.models and self.check_model_exists(active):
-                        return active
             except:
                 pass
-        
-        for m_type in self.models:
-            if self.check_model_exists(m_type):
-                self.set_active_model_type(m_type)
-                return m_type
-        return "fast"
-        
-    def set_active_model_type(self, model_type):
-        if model_type in self.models or model_type in self.gemini_models or model_type == "smolagents_local":
-            config = {}
-            if os.path.exists(self.config_path):
-                try:
-                    with open(self.config_path, 'r') as f:
-                        config = json.load(f)
-                except:
-                    pass
-            config["active_model"] = model_type
+        config["active_model"] = "accurate_9b"
+        try:
             with open(self.config_path, 'w') as f:
                 json.dump(config, f)
+        except:
+            pass
 
     def get_gemini_config(self):
-        config = {}
-        if os.path.exists(self.config_path):
-            try:
-                with open(self.config_path, 'r') as f:
-                    config = json.load(f)
-            except:
-                pass
-        return {
-            "api_key": config.get("gemini_api_key", ""),
-            "model": config.get("selected_gemini_model", "gemini-2.5-flash")
-        }
+        return {"api_key": "", "model": ""}
 
     def set_gemini_config(self, api_key, model):
-        config = {}
-        if os.path.exists(self.config_path):
-            try:
-                with open(self.config_path, 'r') as f:
-                    config = json.load(f)
-            except:
-                pass
-        config["gemini_api_key"] = api_key
-        if model in self.gemini_models:
-            config["selected_gemini_model"] = model
-        with open(self.config_path, 'w') as f:
-            json.dump(config, f)
+        pass
 
     def get_ollama_config(self):
         config = {}
@@ -180,20 +128,26 @@ class ModelManager:
         return "Done"
 
     def check_llama_server_exists(self):
+        import sys
         bin_dir = os.path.join(self.model_dir, 'bin')
-        server_path = os.path.join(bin_dir, 'llama-server')
-        return os.path.exists(server_path) and os.access(server_path, os.X_OK)
+        name = 'llama-server.exe' if sys.platform == 'win32' else 'llama-server'
+        server_path = os.path.join(bin_dir, name)
+        return os.path.exists(server_path) and (sys.platform == 'win32' or os.access(server_path, os.X_OK))
 
     def get_llama_server_path(self):
+        import sys
         bin_dir = os.path.join(self.model_dir, 'bin')
-        return os.path.join(bin_dir, 'llama-server')
+        name = 'llama-server.exe' if sys.platform == 'win32' else 'llama-server'
+        return os.path.join(bin_dir, name)
 
     def download_llama_server(self, progress_callback=None):
         """
-        Downloads llama-server for the current architecture and extracts it.
+        Downloads llama-server for the current architecture and platform, then extracts it.
         """
+        import sys
         import platform
         import tarfile
+        import zipfile
         import shutil
         import urllib.request
         
@@ -206,28 +160,33 @@ class ModelManager:
                 progress_callback("Движок llama-server уже готов.")
             return True
             
-        machine = platform.machine().lower()
-        # GitHub release URLs for llama.cpp b9771
         version = "b9771"
-        if "arm" in machine or "aarch64" in machine:
-            arch = "arm64"
-            filename = f"llama-{version}-bin-macos-arm64.tar.gz"
+        is_win = sys.platform == 'win32'
+        
+        if is_win:
+            filename = f"llama-{version}-bin-win-cpu-x64.zip"
+            temp_archive_path = os.path.join(bin_dir, 'llama_server_temp.zip')
         else:
-            arch = "x64"
-            filename = f"llama-{version}-bin-macos-x64.tar.gz"
+            machine = platform.machine().lower()
+            if "arm" in machine or "aarch64" in machine:
+                arch = "arm64"
+                filename = f"llama-{version}-bin-macos-arm64.tar.gz"
+            else:
+                arch = "x64"
+                filename = f"llama-{version}-bin-macos-x64.tar.gz"
+            temp_archive_path = os.path.join(bin_dir, 'llama_server_temp.tar.gz')
             
         url = f"https://github.com/ggml-org/llama.cpp/releases/download/{version}/{filename}"
-        temp_tar_path = os.path.join(bin_dir, 'llama_server_temp.tar.gz')
         
         if progress_callback:
-            progress_callback(f"Скачивание движка llama-server ({arch})...")
+            progress_callback("Скачивание движка llama-server...")
             
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req) as response:
                 total_size = int(response.headers.get('content-length', 0))
                 downloaded = 0
-                with open(temp_tar_path, 'wb') as f:
+                with open(temp_archive_path, 'wb') as f:
                     while True:
                         chunk = response.read(1024*128)
                         if not chunk:
@@ -241,25 +200,29 @@ class ModelManager:
             if progress_callback:
                 progress_callback("Распаковка движка...")
                 
-            # Extract tar.gz flatly into bin_dir
-            with tarfile.open(temp_tar_path, 'r:gz') as tar:
-                temp_extract_dir = os.path.join(bin_dir, 'extract_temp')
-                os.makedirs(temp_extract_dir, exist_ok=True)
-                tar.extractall(path=temp_extract_dir)
+            temp_extract_dir = os.path.join(bin_dir, 'extract_temp')
+            os.makedirs(temp_extract_dir, exist_ok=True)
+            
+            if is_win:
+                with zipfile.ZipFile(temp_archive_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_extract_dir)
+            else:
+                with tarfile.open(temp_archive_path, 'r:gz') as tar:
+                    tar.extractall(path=temp_extract_dir)
                 
-                for root, dirs, files in os.walk(temp_extract_dir):
-                    for file in files:
-                        file_src = os.path.join(root, file)
-                        file_dst = os.path.join(bin_dir, file)
-                        if os.path.exists(file_dst):
-                            os.remove(file_dst)
-                        shutil.move(file_src, file_dst)
-                        
-                shutil.rmtree(temp_extract_dir)
+            for root, dirs, files in os.walk(temp_extract_dir):
+                for file in files:
+                    file_src = os.path.join(root, file)
+                    file_dst = os.path.join(bin_dir, file)
+                    if os.path.exists(file_dst):
+                        os.remove(file_dst)
+                    shutil.move(file_src, file_dst)
                     
+            shutil.rmtree(temp_extract_dir)
+                
             # Clean up temp archive
-            if os.path.exists(temp_tar_path):
-                os.remove(temp_tar_path)
+            if os.path.exists(temp_archive_path):
+                os.remove(temp_archive_path)
                 
             # Remove any subfolders in bin_dir that were left
             for entry in os.listdir(bin_dir):
@@ -268,21 +231,22 @@ class ModelManager:
                     shutil.rmtree(entry_path)
                     
             if os.path.exists(server_path):
-                # chmod +x для исполняемых файлов
-                os.chmod(server_path, 0o755)
-                # Даем права запуска всем dylib тоже
-                for entry in os.listdir(bin_dir):
-                    if entry.endswith('.dylib') or entry == 'llama-server':
-                        os.chmod(os.path.join(bin_dir, entry), 0o755)
-                
-                # Remove macOS quarantine
-                try:
-                    import subprocess
+                if not is_win:
+                    # chmod +x для исполняемых файлов
+                    os.chmod(server_path, 0o755)
+                    # Даем права запуска всем dylib тоже
                     for entry in os.listdir(bin_dir):
-                        entry_path = os.path.join(bin_dir, entry)
-                        subprocess.run(["xattr", "-d", "com.apple.quarantine", entry_path], stderr=subprocess.DEVNULL)
-                except Exception as ex:
-                    print(f"Quarantine removal warning: {ex}")
+                        if entry.endswith('.dylib') or entry == 'llama-server':
+                            os.chmod(os.path.join(bin_dir, entry), 0o755)
+                    
+                    # Remove macOS quarantine
+                    try:
+                        import subprocess
+                        for entry in os.listdir(bin_dir):
+                            entry_path = os.path.join(bin_dir, entry)
+                            subprocess.run(["xattr", "-d", "com.apple.quarantine", entry_path], stderr=subprocess.DEVNULL)
+                    except Exception as ex:
+                        print(f"Quarantine removal warning: {ex}")
                 
                 if progress_callback:
                     progress_callback("Движок llama-server успешно установлен.")
@@ -290,8 +254,8 @@ class ModelManager:
             else:
                 raise FileNotFoundError("Не удалось найти llama-server в скачанном архиве.")
         except Exception as e:
-            if os.path.exists(temp_tar_path):
-                os.remove(temp_tar_path)
+            if os.path.exists(temp_archive_path):
+                os.remove(temp_archive_path)
             if progress_callback:
                 progress_callback(f"Ошибка установки движка: {str(e)}")
             print(f"Error downloading/extracting llama-server: {e}")

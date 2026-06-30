@@ -1,4 +1,11 @@
 import os
+
+# Clean proxy environment variables to prevent httpx.InvalidURL: Invalid port: ':1'
+for key in ['no_proxy', 'NO_PROXY']:
+    if key in os.environ:
+        parts = [p for p in os.environ[key].split(',') if p != '::1' and p != '::1/128']
+        os.environ[key] = ','.join(parts)
+
 import webview
 import json
 import re
@@ -23,17 +30,36 @@ def is_new_document_start(text):
         pattern = r'\b(' + spaced_kw + r')'
         kw_patterns[kw] = re.compile(pattern)
 
+    # Дополнительные шаблоны для рукописного текста и некачественного OCR
+    city_pattern = re.compile(r'^\s*#*\s*[гГrR]\s*\.\s*[А-ЯA-Z]', re.IGNORECASE)
+    quote_pattern = re.compile(r'[«\"“]\s*[»\"”]\s*\d+')
+    date_pattern = re.compile(r'\b\d{1,2}\s+\S*\s*\d{4}\b')
+        
     print(f"[DEBUG] is_new_document_start: подготовлено {len(lines)} строк для проверки")
-    for i, line in enumerate(lines):
-        line = line.strip().upper()
-        if not line:
+    for i, line in enumerate(lines[:10]):  # проверяем первые 10 строк
+        line_clean = line.strip().upper()
+        if not line_clean:
             continue
         
-        word_count = len(line.split())
-        print(f"[DEBUG] Проверка строки {i}: '{line[:50]}...' (слов: {word_count})")
+        # Фильтруем строки, которые содержат слова, характерные для обычного текста или подписей, а не заголовков
+        stop_words = [
+            'ЯВЛЯЕТСЯ', 'ОБЯЗУЕТСЯ', 'СОСТАВЛЕН', 'ЭКЗЕМПЛ', 'КАЖДОЙ', 
+            'СИЛОЙ', 'ОПЛАТИ', 'СТОИМОСТЬ', 'ПРАВА СТОРОН', 
+            'ПОДПИСИ СТОРОН', 'МЕСТО НАХОЖДЕНИЯ', 'РЕКВИЗИТЫ СТОРОН',
+            'АДРЕСА И РЕКВИЗИТЫ', 'ПОДПИСАЛИ', 'ПОДПИСЬ', 'ПЕЧАТЬ', 
+            'ГЕНЕРАЛЬНЫЙ ДИРЕКТОР', 'ВСТУПАЕТ В СИЛУ', 'НАПРАВЛЕННЫЕ', 
+            'ФАЙЛООБМЕН', 'ЗАКАЗЧИК', 'ИСПОЛНИТЕЛЬ', 'М.П.'
+        ]
+        if any(sw in line_clean for sw in stop_words):
+            print(f"[DEBUG] Пропущена строка (найдено стоп-слово): '{line_clean[:50]}'")
+            continue
         
+        word_count = len(line_clean.split())
+        print(f"[DEBUG] Проверка строки {i}: '{line_clean[:50]}...' (слов: {word_count})")
+        
+        # 1. Проверка стандартных ключевых слов
         for kw, pattern in kw_patterns.items():
-            match = pattern.search(line)
+            match = pattern.search(line_clean)
             if match:
                 print(f"[DEBUG] Найдено ключевое слово: {kw}")
                 if word_count <= 10:
@@ -41,6 +67,21 @@ def is_new_document_start(text):
                 if match.start(1) <= 15 and word_count <= 25:
                     return True
                     
+        # 2. Проверка шаблона города (г. Москва, r. M, Г. Пермь)
+        if city_pattern.search(line):
+            print(f"[DEBUG] Найден шаблон города в строке {i}: {line}")
+            return True
+            
+        # 3. Проверка шаблона пустых кавычек и номера («  » 1214)
+        if quote_pattern.search(line):
+            print(f"[DEBUG] Найден шаблон кавычек/номера в строке {i}: {line}")
+            return True
+
+        # 4. Проверка шаблона даты (## 30  2023 .)
+        if date_pattern.search(line):
+            print(f"[DEBUG] Найден шаблон даты в строке {i}: {line}")
+            return True
+                     
     print("[DEBUG] is_new_document_start: конец (False)")
     return False
 
@@ -216,61 +257,285 @@ class Api:
         server_exists = self.model_manager.check_llama_server_exists()
         return model_exists and server_exists
 
+    def check_all_dependencies_exist(self):
+        """Checks if all required local models, llama-server, and libraries are installed."""
+        missing = self.get_missing_dependencies()
+        return len(missing) == 0
+
+    def get_missing_dependencies(self):
+        """Returns a list of missing dependencies with descriptions and sizes."""
+        missing = []
+        try:
+            # 1. llama-server
+            if not self.model_manager.check_llama_server_exists():
+                missing.append({
+                    "id": "llama_server",
+                    "name": "Движок llama-server",
+                    "size": "30 МБ",
+                    "size_bytes": 30 * 1024 * 1024
+                })
+            # 2. LLM Model
+            if not self.model_manager.check_model_exists("accurate_9b"):
+                missing.append({
+                    "id": "model",
+                    "name": "ИИ-модель Qwen 9B",
+                    "size": "5.5 ГБ",
+                    "size_bytes": int(5.5 * 1024 * 1024 * 1024)
+                })
+            # 3. PaddleOCR
+            if not self.pdf_processor.check_paddleocr_exists():
+                missing.append({
+                    "id": "paddleocr",
+                    "name": "Модели PaddleOCR",
+                    "size": "100 МБ",
+                    "size_bytes": 100 * 1024 * 1024
+                })
+            # 4. Docling
+            if not self.layout_processor.check_engine("docling"):
+                missing.append({
+                    "id": "docling",
+                    "name": "Библиотека Docling",
+                    "size": "2.0 ГБ",
+                    "size_bytes": int(2.0 * 1024 * 1024 * 1024)
+                })
+            # 5. PP-Structure
+            if not self.layout_processor.check_engine("ppstructure"):
+                missing.append({
+                    "id": "ppstructure",
+                    "name": "Библиотека PP-Structure",
+                    "size": "200 МБ",
+                    "size_bytes": 200 * 1024 * 1024
+                })
+        except Exception as e:
+            print(f"Error getting missing dependencies: {e}")
+        return missing
+
+    def get_processing_estimate(self, file_paths, app_mode, ocr_engine, llm_active):
+        """
+        Estimates the processing time in seconds based on hardware specs (CPU, GPU, RAM),
+        file types, total page counts, and chosen pipeline settings.
+        """
+        import sys
+        import os
+        import platform
+        import psutil
+        
+        # 1. Считаем общее количество страниц
+        total_pages = 0
+        total_docs = len(file_paths)
+        is_docx_only = True
+        
+        for path in file_paths:
+            if not os.path.exists(path):
+                continue
+            ext = path.split('.')[-1].lower()
+            if ext == 'pdf':
+                is_docx_only = False
+                try:
+                    import fitz
+                    doc = fitz.open(path)
+                    total_pages += len(doc)
+                    doc.close()
+                except:
+                    total_pages += 1 # fallback
+            elif ext == 'docx':
+                total_pages += 1 # docx parsed extremely fast, counts as 1 page weight
+            else:
+                is_docx_only = False
+                total_pages += 1 # images, etc.
+
+        # 2. Детектируем характеристики железа
+        cpu_count = os.cpu_count() or 4
+        
+        # RAM
+        total_ram_gb = 8.0
+        try:
+            total_ram_gb = psutil.virtual_memory().total / (1024**3)
+        except:
+            try:
+                if sys.platform == 'darwin':
+                    import subprocess
+                    res = subprocess.run(['sysctl', 'hw.memsize'], capture_output=True, text=True)
+                    total_ram_gb = int(res.stdout.split()[-1]) / (1024**3)
+            except:
+                pass
+
+        # GPU
+        has_gpu = False
+        gpu_type = "CPU"
+        if sys.platform == 'darwin':
+            # Apple Silicon M-series check
+            if platform.machine().lower() in ['arm64', 'aarch64']:
+                has_gpu = True
+                gpu_type = "Apple Silicon"
+        else:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    has_gpu = True
+                    gpu_type = "NVIDIA CUDA"
+            except:
+                pass
+
+        # 3. Моделируем скорость
+        # Базовое время обработки 1 страницы скана (в секундах)
+        base_ocr_time = 4.0 # Default: paddleocr
+        if ocr_engine == 'docling':
+            base_ocr_time = 8.0
+        elif ocr_engine == 'ppstructure':
+            base_ocr_time = 6.0
+        elif ocr_engine == 'applevision':
+            base_ocr_time = 0.5
+
+        # Коэффициенты ускорения за счет GPU/архитектуры
+        if has_gpu:
+            if gpu_type == "NVIDIA CUDA":
+                ocr_speed_factor = 0.25 # в 4 раза быстрее
+                llm_speed_factor = 0.12 # в 8 раз быстрее (CUDA-ускорение)
+            elif gpu_type == "Apple Silicon":
+                ocr_speed_factor = 0.40 # в 2.5 раза быстрее (Metal/NE)
+                llm_speed_factor = 0.20 # в 5 раз быстрее (Metal/NE)
+        else:
+            # CPU только
+            ocr_speed_factor = 1.0
+            llm_speed_factor = 1.0
+
+        # Влияние ядер CPU (для фонового OCR и Docling на CPU)
+        cpu_coeff = 1.0 / (min(cpu_count, 8) / 4.0)
+
+        # Влияние оперативной памяти RAM
+        if total_ram_gb < 8.0:
+            ram_coeff = 1.6
+        elif total_ram_gb < 16.0:
+            ram_coeff = 1.2
+        elif total_ram_gb >= 32.0:
+            ram_coeff = 0.85
+        else:
+            ram_coeff = 1.0
+
+        # Расчет времени OCR/Разметки
+        if is_docx_only:
+            ocr_time = total_docs * 0.3 # DOCX обрабатываются практически мгновенно
+        else:
+            ocr_time = total_pages * base_ocr_time * cpu_coeff * ram_coeff * ocr_speed_factor
+
+        # Расчет времени работы LLM (Qwen 9B)
+        llm_time = 0.0
+        if llm_active:
+            # Базовое время инференса локальной 9B модели на CPU для одного документа: ~25 секунд
+            base_llm_time = 25.0
+            llm_time = total_docs * base_llm_time * ram_coeff * llm_speed_factor
+
+        # Фиксированные накладные расходы (запуск сервера, сохранение файлов, UI)
+        overhead = 3.0
+        if llm_active and not self.model_manager.check_llama_server_exists():
+            # Если llama-server еще не запущен, добавляем время на его старт
+            overhead += 5.0
+
+        estimated_seconds = int(ocr_time + llm_time + overhead)
+        
+        # Минимальный лимит, если документов много или страницы большие
+        if estimated_seconds < 5:
+            estimated_seconds = 5
+            
+        print(f"[ESTIMATION] Hardware detected: {cpu_count} CPU cores, {total_ram_gb:.1f} GB RAM, GPU: {gpu_type}.")
+        print(f"[ESTIMATION] Params: pages={total_pages}, docs={total_docs}, is_docx={is_docx_only}, ocr={ocr_engine}, llm_active={llm_active}.")
+        print(f"[ESTIMATION] Estimated OCR time: {ocr_time:.1f}s, LLM time: {llm_time:.1f}s. Total estimate: {estimated_seconds} seconds.")
+        
+        return estimated_seconds
+
+    def download_all_dependencies(self):
+        """Downloads all missing dependencies sequentially."""
+        import threading
+        
+        def task():
+            try:
+                # 1. Download llama-server
+                if not self.model_manager.check_llama_server_exists():
+                    self.send_status("1/5 Установка движка llama-server...")
+                    success = self.model_manager.download_llama_server(self.send_status)
+                    if not success:
+                        raise Exception("Не удалось скачать llama-server")
+
+                # 2. Download LLM model
+                if not self.model_manager.check_model_exists("accurate_9b"):
+                    self.send_status("2/5 Установка ИИ-модели Qwen 9B (~5.5 ГБ)...")
+                    success = self.model_manager.download_model("accurate_9b", self.send_status)
+                    if success != "Done":
+                        raise Exception("Не удалось скачать ИИ-модель")
+
+                # 3. Download PaddleOCR
+                if not self.pdf_processor.check_paddleocr_exists():
+                    self.send_status("3/5 Установка моделей распознавания PaddleOCR...")
+                    success = self.pdf_processor.download_paddleocr(self.send_status)
+                    if not success:
+                        raise Exception("Не удалось скачать модели PaddleOCR")
+
+                # 4. Download Docling layout engine
+                if not self.layout_processor.check_engine("docling"):
+                    self.send_status("4/5 Установка библиотек Docling (~2 ГБ)...")
+                    success = self.layout_processor.download_engine("docling", self.send_status)
+                    if not success:
+                        raise Exception("Не удалось установить библиотеки Docling")
+
+                # 5. Download PP-Structure layout engine
+                if not self.layout_processor.check_engine("ppstructure"):
+                    self.send_status("5/5 Установка библиотек PP-Structure...")
+                    success = self.layout_processor.download_engine("ppstructure", self.send_status)
+                    if not success:
+                        raise Exception("Не удалось установить библиотеки PP-Structure")
+
+                self.send_status("Все компоненты успешно установлены! Запуск программы...")
+                if self.window:
+                    self.window.evaluate_js("window.dependenciesDownloadComplete && window.dependenciesDownloadComplete(true)")
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self.send_status(f"Ошибка при установке компонентов: {str(e)}")
+                if self.window:
+                    self.window.evaluate_js(f"window.dependenciesDownloadComplete && window.dependenciesDownloadComplete(false)")
+
+        threading.Thread(target=task, daemon=True).start()
+        return "Started"
+
+    def exit_app(self):
+        """Destroys the window and exits the application."""
+        import os
+        try:
+            if self.window:
+                self.window.destroy()
+        except:
+            pass
+        os._exit(0)
+
     def get_models_status(self):
-        active = self.model_manager.get_active_model_type()
         server_exists = self.model_manager.check_llama_server_exists()
-        status = {}
-        for m_type in self.model_manager.models:
-            status[m_type] = {
-                "installed": self.model_manager.check_model_exists(m_type) and server_exists,
-                "active": m_type == active
+        return {
+            "accurate_9b": {
+                "installed": self.model_manager.check_model_exists("accurate_9b") and server_exists,
+                "active": True
             }
-        if hasattr(self.model_manager, 'gemini_models'):
-            for m_type in self.model_manager.gemini_models:
-                status[m_type] = {
-                    "installed": True,
-                    "active": m_type == active
-                }
-        status["smolagents_local"] = {
-            "installed": True,
-            "active": active == "smolagents_local"
         }
-        return status
         
     def get_gemini_config(self):
-        return self.model_manager.get_gemini_config()
+        return {"api_key": "", "model": ""}
         
     def save_gemini_config(self, api_key, model):
-        self.model_manager.set_gemini_config(api_key, model)
         return True
 
     def get_ollama_config(self):
-        return self.model_manager.get_ollama_config()
+        return {"model": "", "base_url": ""}
 
     def save_ollama_config(self, model, base_url):
-        self.model_manager.set_ollama_config(model, base_url)
         return True
         
     def set_active_model(self, model_type):
-        if hasattr(self.model_manager, 'gemini_models') and model_type in self.model_manager.gemini_models:
-            self.model_manager.set_active_model_type(model_type)
-            if self.llm_handler:
-                self.llm_handler.unload_model()
-                self.llm_handler = None
-            return True
-        if model_type == "smolagents_local":
-            self.model_manager.set_active_model_type(model_type)
-            if self.llm_handler:
-                self.llm_handler.unload_model()
-                self.llm_handler = None
-            return True
-        if model_type in self.model_manager.models and self.model_manager.check_model_exists(model_type):
-            self.model_manager.set_active_model_type(model_type)
-            if self.llm_handler:
-                self.llm_handler.unload_model()
-                self.llm_handler = None
-            return True
-        return False
+        self.model_manager.set_active_model_type("accurate_9b")
+        if self.llm_handler:
+            self.llm_handler.unload_model()
+            self.llm_handler = None
+        return True
         
     @_lock
     def delete_model(self, model_type):
@@ -370,6 +635,9 @@ class Api:
         Main pipeline for processing PDFs.
         Returns a list of JSON objects for the preview table.
         """
+        import time
+        t_pipeline_start = time.time()
+
         if extract_settings is None:
             extract_settings = {"split": True, "use_ai": True}
 
@@ -377,11 +645,11 @@ class Api:
         all_files_pages = []
         total_files = len(file_paths)
         for idx, path in enumerate(file_paths, 1):
-            prefix = f"[{idx}/{total_files}]"
-            self.send_status(f"{prefix} Извлекаем текст: {os.path.basename(path)}...")
+            self.send_status("Распознаем текст...")
+            t_ocr_start = time.time()
             
             def status_wrapper(msg):
-                self.send_status(f"{prefix} {msg}")
+                self.send_status(msg)
 
             try:
                 is_docx = path.lower().endswith('.docx')
@@ -394,6 +662,9 @@ class Api:
                         pages_text = self.docx_processor.extract_text(path, status_wrapper)
                     else:
                         pages_text = self.pdf_processor.extract_text(path, status_wrapper)
+                
+                t_ocr_end = time.time()
+                print(f"[TIMING] OCR для {os.path.basename(path)} занял {t_ocr_end - t_ocr_start:.2f} сек.")
                         
                 all_files_pages.append({
                     "path": path,
@@ -418,14 +689,7 @@ class Api:
             print(f"Error unloading OCR: {e}")
 
         # Step 3: Run LLM-based analysis page-by-page
-        active = self.model_manager.get_active_model_type()
-        is_gemini = hasattr(self.model_manager, 'gemini_models') and active in self.model_manager.gemini_models
-
-        if is_gemini:
-            return self.process_documents_bulk_gemini(all_files_pages, mode, extract_settings)
-
-        if active == "smolagents_local":
-            return self.process_documents_smolagents(all_files_pages, mode, extract_settings)
+        active = "accurate_9b"
 
         if not self.llm_handler:
             if not self.model_manager.check_model_exists(active):
@@ -446,7 +710,7 @@ class Api:
             
             # Show a generic starting percent for the document if no pages yet
             start_percent = int((current_page_overall / max(total_pages_all_files, 1)) * 95)
-            self.send_status(f"{prefix} Анализируем грамоту: {os.path.basename(path)}... {start_percent}%")
+            self.send_status(f"Анализируем документ... {start_percent}%")
             print(f"\n[INFO] Начат анализ документа: {path}")
             try:
                 current_doc = None
@@ -460,20 +724,27 @@ class Api:
                     print(f"[INFO] Обработка страницы {page_num}/{len(pages_text)}...")
                     
                     is_candidate = False
+                    is_new = False
+                    t_split_start = time.time()
                     if mode == "rename":
                         is_new = False
                     elif mode == "extract":
                         is_candidate = extract_settings.get('split', True) and is_new_document_start(text)
-                        is_new = is_candidate and self.llm_handler.is_new_document(
-                            text, page_num,
-                            progress_callback=lambda tokens: self.send_status(f"{prefix} Проверка границ документа (стр. {page_num})... {percent}% ({tokens} токенов)")
-                        )
+                        if is_candidate:
+                            is_new = self.llm_handler.is_new_document(
+                                text, page_num,
+                                progress_callback=lambda tokens: self.send_status(f"Определяем границы документа... {percent}%")
+                            )
                     else:
                         is_candidate = is_new_document_start(text)
-                        is_new = is_candidate and self.llm_handler.is_new_document(
-                            text, page_num,
-                            progress_callback=lambda tokens: self.send_status(f"{prefix} Проверка границ документа (стр. {page_num})... {percent}% ({tokens} токенов)")
-                        )
+                        if is_candidate:
+                            is_new = self.llm_handler.is_new_document(
+                                text, page_num,
+                                progress_callback=lambda tokens: self.send_status(f"Определяем границы документа... {percent}%")
+                            )
+                    t_split_end = time.time()
+                    if is_candidate:
+                        print(f"[TIMING] Проверка границ (стр. {page_num}) заняла {t_split_end - t_split_start:.2f} сек.")
                     
                     print(f"DEBUG PIPELINE: page_num={page_num}, is_candidate={is_candidate}, is_new={is_new}, text_start={repr(text[:200])}")
                     
@@ -485,28 +756,28 @@ class Api:
                         
                         if mode == "extract" and extract_settings.get("use_ai", True):
                             print(f"[INFO] Запуск ИИ коррекции текста для страницы {page_num}...")
-                            self.send_status(f"{prefix} ИИ коррекция текста (стр. {page_num})... {percent}%")
+                            self.send_status(f"Проводим умную коррекцию... {percent}%")
                             proofread_text = self.llm_handler.proofread_text(
                                 p['text'],
-                                progress_callback=lambda tokens: self.send_status(f"{prefix} ИИ коррекция (стр. {page_num})... {percent}% (чтение: {tokens} токенов)")
+                                progress_callback=lambda tokens: self.send_status(f"Проводим умную коррекцию... {percent}%")
                             )
                             text = proofread_text[:3000]
                             p['text'] = proofread_text
                         
                         print(f"[INFO] Запуск извлечения реквизитов (analyze_text) для страницы {page_num}...")
-                        self.send_status(f"{prefix} Определение реквизитов (стр. {page_num})... {percent}%")
+                        self.send_status(f"Извлекаем юридические реквизиты... {percent}%")
+                        t_name_start = time.time()
                         analysis = self.llm_handler.analyze_text(
                             text, page_num, retry=retries,
-                            progress_callback=lambda tokens: self.send_status(f"{prefix} Анализ ИИ (стр. {page_num})... {percent}% (обработано {tokens} токенов)")
+                            progress_callback=lambda tokens: self.send_status(f"Извлекаем юридические реквизиты... {percent}%")
                         )
-                        print(f"[INFO] Результат анализа: {analysis}")
                         
                         while (analysis.get('short_name') == 'Документ' or not analysis.get('date') or analysis.get('date') == '-') and retries < max_retries:
                             retries += 1
-                            self.send_status(f"{prefix} Перепроверка ИИ (стр. {page_num}), попытка {retries}... {percent}%")
+                            self.send_status(f"Перепроверка данных... {percent}%")
                             
                             if retries == 1:
-                                self.send_status(f"{prefix} Очистка текста OCR (стр. {page_num})... {percent}%")
+                                self.send_status(f"Улучшаем качество текста... {percent}%")
                                 try:
                                     ocr_text = self.pdf_processor.force_ocr_page(path, page_num)
                                     if len(ocr_text.strip()) > 20:
@@ -520,8 +791,11 @@ class Api:
                             
                             analysis = self.llm_handler.analyze_text(
                                 text, page_num, retry=retries,
-                                progress_callback=lambda tokens: self.send_status(f"{prefix} Перепроверка ИИ (стр. {page_num}), попытка {retries}... {percent}% ({tokens} токенов)")
+                                progress_callback=lambda tokens: self.send_status(f"Перепроверка данных... {percent}%")
                             )
+                        t_name_end = time.time()
+                        print(f"[TIMING] Именование/Реквизиты (стр. {page_num}) заняло {t_name_end - t_name_start:.2f} сек. Попыток: {retries + 1}")
+                        print(f"[INFO] Результат анализа: {analysis}")
 
                         b64_image = ""
                         if not is_docx:
@@ -561,10 +835,10 @@ class Api:
                             current_doc['actual_page_count'] = current_doc.get('actual_page_count', 0) + 1
                             if mode == "extract":
                                 if extract_settings.get("use_ai", True):
-                                    self.send_status(f"ИИ коррекция текста (стр. {page_num})... {percent}%")
+                                    self.send_status(f"Проводим умную коррекцию... {percent}%")
                                     proofread_text = self.llm_handler.proofread_text(
                                         p['text'],
-                                        progress_callback=lambda tokens: self.send_status(f"ИИ коррекция (стр. {page_num})... {percent}% (чтение: {tokens} токенов)")
+                                        progress_callback=lambda tokens: self.send_status(f"Проводим умную коррекцию... {percent}%")
                                     )
                                     p['text'] = proofread_text
                                 current_doc['text'] += '\n\n' + p['text']
@@ -579,181 +853,12 @@ class Api:
                 traceback.print_exc()
                 self.send_status(f"Ошибка при обработке {os.path.basename(path)}: {e}")
 
+        t_pipeline_end = time.time()
+        print(f"[TIMING] Общее время работы алгоритма: {t_pipeline_end - t_pipeline_start:.2f} сек.")
         self.send_status("Ожидание проверки... 100%")
         return results
 
-    def process_documents_smolagents(self, all_files_pages, mode, extract_settings):
-        from backend.smolagents_workflow import SmolAgentsWorkflow
-        
-        ollama_config = self.model_manager.get_ollama_config()
-        results = []
-        
-        total_files = len(all_files_pages)
-        for f_idx, file_data in enumerate(all_files_pages, 1):
-            path = file_data["path"]
-            is_docx = file_data["is_docx"]
-            pages_text = file_data["pages_text"]
-            
-            prefix = f"[{f_idx}/{total_files}]"
-            self.send_status(f"{prefix} Запуск SmolAgents для {os.path.basename(path)}...")
-            
-            try:
-                workflow = SmolAgentsWorkflow(
-                    file_path=path,
-                    pages_text=pages_text,
-                    mode=mode,
-                    extract_settings=extract_settings,
-                    ollama_config=ollama_config,
-                    status_callback=lambda msg: self.send_status(f"{prefix} {msg}")
-                )
-                file_results = workflow.run()
-                results.extend(file_results)
-            except Exception as e:
-                self.send_status(f"{prefix} Ошибка SmolAgents: {e}")
-                print(f"SmolAgents error processing file {path}: {e}")
-                
-        self.send_status("Ожидание проверки...")
-        return results
 
-    def process_documents_bulk_gemini(self, all_files_pages, mode, extract_settings):
-        import uuid
-        active_model = self.model_manager.get_active_model_type()
-        gemini_config = self.model_manager.get_gemini_config()
-        if not gemini_config.get("api_key"):
-            return {"error": "API ключ Gemini не настроен. Пожалуйста, введите его в настройках."}
-            
-        try:
-            from backend.llm_handler import GeminiHandler
-            gemini_handler = GeminiHandler(gemini_config["api_key"], active_model)
-        except Exception as e:
-            return {"error": f"Ошибка инициализации Gemini: {e}"}
-
-        documents_to_analyze = []
-
-        total_files = len(all_files_pages)
-        for f_idx, file_data in enumerate(all_files_pages, 1):
-            path = file_data["path"]
-            is_docx = file_data["is_docx"]
-            pages_text = file_data["pages_text"]
-            
-            prefix = f"[{f_idx}/{total_files}]"
-            self.send_status(f"{prefix} Формируем блоки для Gemini: {os.path.basename(path)}...")
-            
-            current_doc = None
-            for p in pages_text:
-                page_num = p['page_num']
-                text = p['text'][:3000]
-                
-                if mode == "rename":
-                    is_new = False
-                else:
-                    is_candidate = extract_settings.get('split', True) if mode == "extract" else True
-                    is_new = is_candidate and is_new_document_start(text)
-                
-                if is_new or current_doc is None:
-                    b64_image = ""
-                    if not is_docx:
-                        try:
-                            import fitz
-                            import base64
-                            tmp_doc = fitz.open(path)
-                            tmp_page = tmp_doc[page_num - 1]
-                            pix = tmp_page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-                            img_data = pix.tobytes("jpeg", 80)
-                            b64_image = base64.b64encode(img_data).decode("utf-8")
-                            tmp_doc.close()
-                        except Exception as e:
-                            pass
-                            
-                    if current_doc:
-                        current_doc['end_page'] = page_num - 1
-                        documents_to_analyze.append(current_doc)
-                        
-                    current_doc = {
-                        "doc_id": str(uuid.uuid4()),
-                        "start_page": page_num,
-                        "end_page": page_num,
-                        "actual_page_count": 1,
-                        "is_docx": is_docx,
-                        "original_file": path,
-                        "text": p['text'],
-                        "image_b64": b64_image,
-                        "analysis_text": text
-                    }
-                else:
-                    if current_doc:
-                        current_doc['end_page'] = page_num
-                        current_doc['actual_page_count'] += 1
-                        if mode == "extract":
-                            current_doc['text'] += '\n\n' + p['text']
-            
-            if current_doc:
-                current_doc['end_page'] = pages_text[-1]['page_num'] if pages_text else current_doc['end_page']
-                documents_to_analyze.append(current_doc)
-
-        self.send_status("Gemini API: Анализ документов...")
-        batch_size = 20
-        total_batches = (len(documents_to_analyze) + batch_size - 1) // batch_size
-        gemini_results = {}
-        try:
-            for i in range(0, len(documents_to_analyze), batch_size):
-                batch_idx = (i // batch_size) + 1
-                self.send_status(f"Gemini API: Анализ документов (пакет {batch_idx} из {total_batches})...")
-                batch = documents_to_analyze[i:i+batch_size]
-                batch_input = [{"doc_id": item["doc_id"], "text": item["analysis_text"]} for item in batch]
-                res_list = gemini_handler.analyze_documents_bulk(batch_input)
-                for res in res_list:
-                    gemini_results[res.get("doc_id")] = res
-        except Exception as e:
-            print(f"Error during bulk Gemini processing: {e}")
-            return {"error": f"Ошибка Gemini API: {str(e)}"}
-
-        results = []
-        from backend.llm_handler import format_parties, clean_doc_type, clean_doc_date
-
-        for item in documents_to_analyze:
-            d_id = item["doc_id"]
-            analysis = gemini_results.get(d_id, {
-                "parties": "-", "doc_type": "Документ", "number": "-", "date": "-"
-            })
-            
-            raw_type = clean_doc_type(analysis.get("doc_type", "Документ"))
-            doc_number = analysis.get("number", "-")
-            clean_date = clean_doc_date(analysis.get("date", "-"), item["text"])
-            parties = format_parties(analysis.get("parties", "-"))
-            
-            full_parts = []
-            full_type = raw_type
-            full_parts.append(full_type)
-            if doc_number and doc_number != "-":
-                clean_num = doc_number.replace("№", "").replace("номер", "").replace("No", "").strip()
-                if clean_num:
-                    full_parts.append(f"№{clean_num}")
-            if clean_date and clean_date != "-":
-                full_parts.append(f"от {clean_date}")
-            full_name = " ".join(full_parts)
-
-            doc_item = {
-                "original_file": item["original_file"],
-                "start_page": item["start_page"],
-                "end_page": item["end_page"],
-                "actual_page_count": item["actual_page_count"],
-                "is_docx": item["is_docx"],
-                "parties": parties,
-                "short_name": raw_type,
-                "full_name": full_name,
-                "date": clean_date,
-                "confidence": True,
-                "isMerged": False,
-                "isActive": True,
-                "isManualEdit": False,
-                "new_name": "",
-                "text": item["text"],
-                "image_b64": item["image_b64"]
-            }
-            results.append(doc_item)
-            
-        return results
 
     @_lock
     def save_documents(self, preview_data, output_dir, mode="split", export_formats=None):
@@ -788,10 +893,17 @@ class Api:
                 if not new_name:
                     new_name = f"Документ_стр_{start_page}"
                 
+                # Ограничение длины имени файла во избежание ошибки "File name too long" (max 255 байт)
+                new_name_bytes = new_name.encode('utf-8')
+                if len(new_name_bytes) > 150:
+                    new_name = new_name_bytes[:150].decode('utf-8', errors='ignore').strip(' .')
+                
                 current_output_dir = output_dir.strip() if output_dir else os.path.dirname(original_path)
                 os.makedirs(current_output_dir, exist_ok=True)
                 
                 self.send_status(f"Сохранение: {new_name}...")
+                
+                current_saved_files = []
                 
                 if mode == "extract":
                     for fmt in export_formats:
@@ -801,14 +913,17 @@ class Api:
                                 new_name,
                                 current_output_dir
                             )
+                            current_saved_files.append(final_path)
                         elif fmt == "md":
                             final_path = os.path.join(current_output_dir, new_name.replace('.docx', '').replace('.pdf', '') + '.md')
                             with open(final_path, 'w', encoding='utf-8') as f:
                                 f.write(item.get('text', ''))
+                            current_saved_files.append(final_path)
                         elif fmt == "txt":
                             final_path = os.path.join(current_output_dir, new_name.replace('.docx', '').replace('.pdf', '') + '.txt')
                             with open(final_path, 'w', encoding='utf-8') as f:
                                 f.write(item.get('text', ''))
+                            current_saved_files.append(final_path)
                 elif original_path.lower().endswith('.docx'):
                     # Save docx
                     final_path = self.docx_processor.split_and_save(
@@ -818,6 +933,7 @@ class Api:
                         new_name, 
                         current_output_dir
                     )
+                    current_saved_files.append(final_path)
                 else:
                     # Save pdf
                     final_path = self.pdf_processor.split_and_save(
@@ -827,7 +943,10 @@ class Api:
                         new_name, 
                         current_output_dir
                     )
-                saved_files.append(final_path)
+                    current_saved_files.append(final_path)
+                    
+                saved_files.extend(current_saved_files)
+                
             except Exception as e:
                 error_msg = f"{e}"
                 print(error_msg)

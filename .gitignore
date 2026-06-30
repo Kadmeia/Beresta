@@ -28,5 +28,10 @@ __pycache__/
 *.pdf
 !test_data/*.pdf
 !frontend/assets/*.pdf
-*.log
 tesseract-portable.zip
+
+# PyInstaller & Build artifacts
+build/
+dist/
+*.dmg
+
